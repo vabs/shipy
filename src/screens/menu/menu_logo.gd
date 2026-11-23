@@ -1,11 +1,13 @@
 class_name MenuLogo
 extends Control
-## Hand-built title logo: chunky "Cruise Ship" lettering (per-letter bounce, outline, lip shadow), a coral
+## Hand-built title logo: chunky "Ship" lettering (per-letter bounce, outline, lip shadow), a coral
 ## "MANAGER" ribbon with an anchor medallion and a ship's wheel, and rolling waves underneath.
 ##   intro_t: seconds since the intro began (drives the letters dropping in). Min size 840x340.
 
 const U := preload("res://src/render/art/art_util.gd")
-const LINE1: String = "Cruise Ship"
+const LINE1: String = "Ship"
+## Leading characters of LINE1 drawn in cream; the rest are sun-gold.
+const CREAM_CHARS: int = 0
 const LINE2: String = "MANAGER"
 const NAVY_D: Color = Color("1F2A40")
 
@@ -65,8 +67,8 @@ func _draw() -> void:
 		if ch2 == " ":
 			continue
 		var pos2 := Vector2(xs[i], ys[i])
-		var fill: Color = Color("FFF8EC") if i < 6 else Palette.SUN
-		var lip: Color = Color("E3C7A0") if i < 6 else Palette.SUN_DEEP
+		var fill: Color = Color("FFF8EC") if i < CREAM_CHARS else Palette.SUN
+		var lip: Color = Color("E3C7A0") if i < CREAM_CHARS else Palette.SUN_DEEP
 		draw_string(_font, pos2 + Vector2(0, 10), ch2, HORIZONTAL_ALIGNMENT_LEFT, -1, px1, Color(lip.r, lip.g, lip.b, al[i]))
 		draw_string(_font, pos2, ch2, HORIZONTAL_ALIGNMENT_LEFT, -1, px1, Color(fill.r, fill.g, fill.b, al[i]))
 		# glossy highlight on the upper edge

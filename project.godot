@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="Cruise Ship Manager"
-config/description="A 2D side-view cruise ship management game."
+config/name="Ship Manager"
+config/description="A 2D side-view ship management game."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"

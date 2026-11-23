@@ -122,7 +122,7 @@ func _build_ui() -> void:
 	# credit line
 	var ver := Label.new()
 	ver.theme_type_variation = &"OnDarkSmall"
-	ver.text = "Cruise Ship Manager  v0.1"
+	ver.text = "Ship Manager  v0.1"
 	ver.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
 	ver.add_theme_color_override("font_outline_color", Color(0.1, 0.16, 0.3, 0.6))
 	ver.add_theme_constant_override("outline_size", 4)

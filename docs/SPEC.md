@@ -1,11 +1,11 @@
-# Cruise Ship Manager — Build Spec (v1)
+# Ship Manager — Build Spec (v1)
 
 This is the binding contract for everyone writing code in this repo. Source design doc:
 "Cruise Ship Manager (2D) — Feature Plan". Scope = every feature marked **MVP** and **v1** in that
 doc. "Later" items are out of scope (decor, groups, staff fatigue, medics/entertainers/chefs, weather,
 leaderboards).
 
-Working title: **Cruise Ship Manager**. Original game: own name, art, characters, levels. Never
+Title: **Ship Manager**. Original game: own name, art, characters, levels. Never
 reference or imitate any existing game's name, characters or art.
 
 ---------------------------------------------------------------------------------------------------
