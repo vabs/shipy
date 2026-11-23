@@ -46,7 +46,8 @@ func _ready() -> void:
 	_vp = SubViewport.new()
 	_vp.transparent_bg = true
 	_vp.disable_3d = true
-	_vp.msaa_2d = Viewport.MSAA_4X
+	# The Compatibility renderer (web) has no 2D MSAA; requesting it only logs warnings.
+	_vp.msaa_2d = Viewport.MSAA_DISABLED if OS.has_feature("web") else Viewport.MSAA_4X
 	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_vp.render_target_clear_mode = SubViewport.CLEAR_MODE_ALWAYS
 	_vp.size = Vector2i(64, 64)

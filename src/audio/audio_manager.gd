@@ -205,6 +205,11 @@ func _start_synth() -> void:
 	var headless: bool = DisplayServer.get_name() == "headless"
 	if "--no-audio-synth" in args or (headless and not synth_in_headless and "--audio-synth" not in args):
 		return
+	# Single-threaded builds (the web export) can't run synthesis threads: load the pre-baked
+	# sounds from tools/bake_audio.gd instead.
+	if OS.has_feature("web") or "--audio-cache" in args:
+		_load_baked_audio.call_deferred()
+		return
 	_pending_threads = 1 + MUSIC_THREADS.size()
 	var sfx_thread := Thread.new()
 	sfx_thread.start(_sfx_worker)
@@ -240,6 +245,57 @@ func _music_worker(tracks: Array) -> void:
 			SU.to_pcm16(perc) if not perc.is_empty() else PackedByteArray(),
 			bool(d["loop"]), int(d["sr"]))
 	_on_thread_done.call_deferred()
+
+
+const BAKED_AUDIO_DIR: String = "res://assets/audio_cache"
+
+
+## Loads sounds pre-rendered by tools/bake_audio.gd. Missing files are skipped (that sound stays silent).
+func _load_baked_audio() -> void:
+	var manifest_path: String = BAKED_AUDIO_DIR.path_join("manifest.json")
+	if not FileAccess.file_exists(manifest_path):
+		push_warning("AudioManager: no baked audio at %s; the game will be silent" % BAKED_AUDIO_DIR)
+		return
+	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(manifest_path))
+	if not manifest is Dictionary:
+		push_warning("AudioManager: unreadable baked audio manifest")
+		return
+	for sfx_name: StringName in SfxBank.NAMES:
+		var sfx_stream: AudioStreamWAV = _load_baked_stream("sfx_%s.wav" % sfx_name, 0)
+		if sfx_stream != null:
+			_sfx[sfx_name] = sfx_stream
+			sfx_ready.emit(sfx_name)
+	var music: Dictionary = (manifest as Dictionary).get("music", {})
+	for track_key: String in music:
+		var track_name := StringName(track_key)
+		var info: Dictionary = music[track_key]
+		var looped: bool = bool(info.get("loop", false))
+		var main: AudioStreamWAV = _load_baked_stream("music_%s.wav" % track_key,
+			int(info.get("frames", 0)) if looped else 0)
+		if main == null:
+			continue
+		var perc_frames: int = int(info.get("perc_frames", 0))
+		_music[track_name] = {
+			"main": main,
+			"perc": _load_baked_stream("music_%s_perc.wav" % track_key, perc_frames) if perc_frames > 0 else null,
+			"loop": looped,
+		}
+		music_ready.emit(track_name)
+		if _requested_music == track_name and _current_music != track_name:
+			_start_music(track_name, _requested_fade)
+	synth_finished.emit()
+
+
+func _load_baked_stream(file: String, loop_frames: int) -> AudioStreamWAV:
+	var path: String = BAKED_AUDIO_DIR.path_join(file)
+	if not ResourceLoader.exists(path):
+		return null
+	var stream := load(path) as AudioStreamWAV
+	if stream != null and loop_frames > 0:
+		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		stream.loop_begin = 0
+		stream.loop_end = loop_frames
+	return stream
 
 
 func _on_thread_done() -> void:
