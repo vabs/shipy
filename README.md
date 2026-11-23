@@ -5,7 +5,9 @@ hectic voyage keeping guests fed, entertained, clean and happy.
 
 ![Ship Manager main menu](docs/screenshots/menu.png)
 
-## How to run
+**Play in your browser:** https://vabs.github.io/shipy/
+
+## How to run locally
 
 1. Install Godot 4.7 or newer: download it from [godotengine.org](https://godotengine.org/download),
    or on macOS run `brew install --cask godot`.
