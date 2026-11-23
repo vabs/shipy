@@ -1,0 +1,43 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Cruise Ship Manager"
+config/description="A 2D side-view cruise ship management game."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+Settings="*res://src/meta/settings.gd"
+SaveManager="*res://src/meta/save_manager.gd"
+ContentDB="*res://src/core/content_db.gd"
+AudioManager="*res://src/audio/audio_manager.gd"
+Router="*res://src/game/router.gd"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/window_width_override=1600
+window/size/window_height_override=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[gui]
+
+common/snap_controls_to_pixels=false
+
+[rendering]
+
+anti_aliasing/quality/msaa_2d=2
+environment/defaults/default_clear_color=Color(0.07, 0.11, 0.18, 1)

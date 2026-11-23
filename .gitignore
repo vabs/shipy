@@ -1,0 +1,12 @@
+# Godot 4
+.godot/
+/android/
+*.translation
+export.cfg
+export_credentials.cfg
+
+# Local tooling
+.serena/
+.DS_Store
+/out/
+/tests/out/
