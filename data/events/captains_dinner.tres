@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="EventDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/event_def.gd" id="1_kjbmp"]
+
+[resource]
+script = ExtResource("1_kjbmp")
+id = &"captains_dinner"
+display_name = "Captain's Dinner"
+description = "The restaurant is the place to be. Full tables delight guests."
+duration = 60.0
+icon = &"star"
+room_appeal_mult = {
+&"restaurant": 3.0
+}
+full_room_bonus = {
+&"restaurant": 10.0
+}

@@ -1,0 +1,48 @@
+[gd_resource type="Resource" script_class="LevelDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/level_def.gd" id="1_3mtpy"]
+
+[resource]
+script = ExtResource("1_3mtpy")
+id = &"med_2"
+index = 2
+campaign_index = 2
+display_name = "Sunny Side Up"
+blurb = "Movie fans come aboard. Give them something to watch."
+budget = 2500
+waves = Array[Dictionary]([{
+"count": 5,
+"t": 0.0
+}, {
+"count": 4,
+"t": 32.5
+}, {
+"count": 3,
+"t": 68.5
+}, {
+"count": 2,
+"t": 104.5
+}])
+archetype_weights = {
+&"film_buff": 0.2,
+&"fitness_fan": 0.2,
+&"gamer": 0.15,
+&"holidaymaker": 0.45
+}
+scheduled_events = Array[Dictionary]([{
+"event": &"film_night",
+"t": 70.0
+}, {
+"event": &"lunch_rush",
+"t": 115.0
+}])
+star_goals = Array[Dictionary]([{
+"type": "rating",
+"value": 56
+}, {
+"type": "rating",
+"value": 78
+}, {
+"type": "served",
+"value": 70
+}])

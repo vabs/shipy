@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_p2etj"]
+
+[resource]
+script = ExtResource("1_p2etj")
+id = &"arcade"
+display_name = "Arcade"
+category = &"fun"
+width = 3
+capacity = 3
+service_time = 8.0
+satisfies = {
+&"fun": 85.0
+}
+fun_tag = &"gaming"
+spend = 8
+cost = 350
+upkeep = 6.0
+power = 4
+mess_chance = 0.08
+breakdown_time = 85.0
+wear_per_use = 6.0
+unlock_level = 4
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 2,
+"cost": 210,
+"speed_mult": 1.0
+}, {
+"capacity_add": 2,
+"cost": 315,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.49411765, 0.8392157, 0.64705884, 1),
+"wall": Color(0.16862746, 0.22745098, 0.33333334, 1)
+}
+description = "Beeps, boops and high scores."

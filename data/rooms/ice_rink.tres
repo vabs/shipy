@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_t3qlg"]
+
+[resource]
+script = ExtResource("1_t3qlg")
+id = &"ice_rink"
+display_name = "Ice Rink"
+category = &"fun"
+width = 5
+capacity = 5
+service_time = 10.0
+satisfies = {
+&"fun": 90.0
+}
+spend = 7
+cost = 600
+upkeep = 9.0
+power = 5
+water = 2
+mess_chance = 0.1
+breakdown_time = 110.0
+wear_per_use = 5.0
+unlock_level = 7
+destination_lock = &"arctic"
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 3,
+"cost": 360,
+"speed_mult": 1.0
+}, {
+"capacity_add": 3,
+"cost": 540,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.22745098, 0.627451, 0.78431374, 1),
+"wall": Color(0.8666667, 0.9490196, 0.98039216, 1)
+}
+description = "Skate in circles. Happily."

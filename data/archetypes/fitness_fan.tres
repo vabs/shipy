@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ArchetypeDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/archetype_def.gd" id="1_tnk0b"]
+
+[resource]
+script = ExtResource("1_tnk0b")
+id = &"fitness_fan"
+display_name = "Fitness Fan"
+prop = &"headband"
+body_color = Color(0.49411765, 0.8392157, 0.64705884, 1)
+favorite_tags = Array[StringName]([&"fitness"])
+favorite_rooms = Array[StringName]([&"gym", &"pool"])
+decay_mult = {
+&"hunger": 1.5
+}
+quirk_text = "Gets hungry 50% faster."

@@ -1,0 +1,59 @@
+[gd_resource type="Resource" script_class="LevelDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/level_def.gd" id="1_x1bhy"]
+
+[resource]
+script = ExtResource("1_x1bhy")
+id = &"arctic_1"
+campaign_index = 7
+display_name = "Cold Open"
+blurb = "Brr! The top deck is freezing. Keep guests inside, then watch the sky."
+destination = &"arctic"
+hull = &"medium"
+budget = 3700
+ticket_price = 26
+duration = 220.0
+waves = Array[Dictionary]([{
+"count": 7,
+"t": 0.0
+}, {
+"count": 5,
+"t": 31.0
+}, {
+"count": 5,
+"t": 66.0
+}, {
+"count": 4,
+"t": 101.0
+}, {
+"count": 3,
+"t": 136.5
+}])
+archetype_weights = {
+&"film_buff": 0.3,
+&"fitness_fan": 0.2,
+&"gamer": 0.25,
+&"holidaymaker": 0.25
+}
+scheduled_events = Array[Dictionary]([{
+"event": &"northern_lights",
+"t": 85.0
+}, {
+"event": &"lunch_rush",
+"t": 135.0
+}, {
+"event": &"power_surge",
+"t": 175.0
+}])
+star_goals = Array[Dictionary]([{
+"type": "rating",
+"value": 38
+}, {
+"type": "rating",
+"value": 59
+}, {
+"type": "no_lost_guests"
+}])
+mess_mult = 1.27
+health_mult = 0.79
+decay_mult = 1.2

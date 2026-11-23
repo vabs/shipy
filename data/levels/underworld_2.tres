@@ -1,0 +1,61 @@
+[gd_resource type="Resource" script_class="LevelDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/level_def.gd" id="1_ajgkj"]
+
+[resource]
+script = ExtResource("1_ajgkj")
+id = &"underworld_2"
+index = 2
+campaign_index = 14
+display_name = "Ferryman's Special"
+blurb = "The guests are dead hungry. The ghosts are dead keen."
+destination = &"underworld"
+hull = &"medium"
+budget = 5400
+ticket_price = 31
+duration = 250.0
+waves = Array[Dictionary]([{
+"count": 10,
+"t": 0.0
+}, {
+"count": 8,
+"t": 35.0
+}, {
+"count": 7,
+"t": 75.0
+}, {
+"count": 6,
+"t": 115.0
+}, {
+"count": 5,
+"t": 155.0
+}])
+archetype_weights = {
+&"film_buff": 0.25,
+&"fitness_fan": 0.15,
+&"gamer": 0.4,
+&"holidaymaker": 0.2
+}
+scheduled_events = Array[Dictionary]([{
+"event": &"lunch_rush",
+"t": 55.0
+}, {
+"event": &"haunting",
+"t": 115.0
+}, {
+"event": &"power_surge",
+"t": 175.0
+}])
+star_goals = Array[Dictionary]([{
+"type": "rating",
+"value": 32
+}, {
+"type": "served",
+"value": 220
+}, {
+"type": "rating",
+"value": 74
+}])
+mess_mult = 1.25
+health_mult = 0.8
+decay_mult = 1.2

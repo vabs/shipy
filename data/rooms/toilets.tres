@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_7vxv1"]
+
+[resource]
+script = ExtResource("1_7vxv1")
+id = &"toilets"
+display_name = "Toilets"
+category = &"hygiene"
+width = 2
+capacity = 2
+service_time = 6.0
+satisfies = {
+&"hygiene": 90.0
+}
+cost = 120
+upkeep = 3.0
+water = 3
+mess_chance = 0.25
+breakdown_time = 90.0
+wear_per_use = 6.0
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 1,
+"cost": 72,
+"speed_mult": 1.0
+}, {
+"capacity_add": 1,
+"cost": 108,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.22745098, 0.627451, 0.78431374, 1),
+"wall": Color(0.8117647, 0.9098039, 0.9411765, 1)
+}
+description = "Three stalls. Never enough."

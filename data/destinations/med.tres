@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="DestinationDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/destination_def.gd" id="1_5wlh2"]
+
+[resource]
+script = ExtResource("1_5wlh2")
+id = &"med"
+display_name = "Mediterranean"
+sky_top = Color(0.4862745, 0.78039217, 0.9411765, 1)
+sky_bottom = Color(1, 0.8509804, 0.72156864, 1)
+sea = Color(0.22745098, 0.627451, 0.78431374, 1)
+twist_text = "Sun-baked decks: guests get grubby 25% faster and everyone loves the pool."
+hygiene_decay_mult = 1.25
+pool_appeal_mult = 1.4
+random_events = Array[StringName]([&"heat_wave"])
+new_room = &"sauna"

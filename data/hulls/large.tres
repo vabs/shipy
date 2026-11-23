@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="HullDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/hull_def.gd" id="1_va44d"]
+
+[resource]
+script = ExtResource("1_va44d")
+id = &"large"
+display_name = "Grand Liner"
+width = 40
+decks = 6
+power = 38
+water = 34
+max_staff = 8

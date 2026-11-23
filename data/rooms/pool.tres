@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_536f1"]
+
+[resource]
+script = ExtResource("1_536f1")
+id = &"pool"
+display_name = "Pool"
+category = &"fun"
+width = 6
+capacity = 6
+service_time = 11.0
+satisfies = {
+&"fun": 60.0,
+&"hygiene": 35.0
+}
+fun_tag = &"water"
+appeal = 1.1
+spend = 3
+cost = 500
+upkeep = 8.0
+power = 2
+water = 5
+placement = &"top_deck"
+mess_chance = 0.12
+breakdown_time = 130.0
+wear_per_use = 4.0
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 3,
+"cost": 300,
+"speed_mult": 1.0
+}, {
+"capacity_add": 3,
+"cost": 450,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.22745098, 0.627451, 0.78431374, 1),
+"wall": Color(0.7490196, 0.9019608, 0.9607843, 1)
+}
+description = "Splash! Top deck only."

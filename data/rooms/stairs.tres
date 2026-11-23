@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_3q2ap"]
+
+[resource]
+script = ExtResource("1_3q2ap")
+id = &"stairs"
+display_name = "Stairs"
+category = &"transport"
+service_time = 0.0
+cost = 60
+placement = &"any"
+colors = {
+"accent": Color(0.16862746, 0.22745098, 0.33333334, 1),
+"wall": Color(0.7882353, 0.72156864, 0.627451, 1)
+}
+description = "Connects two decks."

@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_xnbck"]
+
+[resource]
+script = ExtResource("1_xnbck")
+id = &"restaurant"
+display_name = "Restaurant"
+category = &"food"
+width = 4
+capacity = 3
+service_time = 10.0
+satisfies = {
+&"fun": 20.0,
+&"hunger": 100.0
+}
+appeal = 1.1
+spend = 16
+cost = 450
+upkeep = 8.0
+power = 3
+water = 2
+mess_chance = 0.12
+breakdown_time = 120.0
+wear_per_use = 5.0
+unlock_level = 5
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 2,
+"cost": 270,
+"speed_mult": 1.0
+}, {
+"capacity_add": 2,
+"cost": 405,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.9098039, 0.3137255, 0.35686275, 1),
+"wall": Color(0.9647059, 0.8627451, 0.79607844, 1)
+}
+description = "Candlelit tables, white tablecloths."
+sick_chance = 0.006

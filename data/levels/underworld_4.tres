@@ -1,0 +1,65 @@
+[gd_resource type="Resource" script_class="LevelDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/level_def.gd" id="1_b6eox"]
+
+[resource]
+script = ExtResource("1_b6eox")
+id = &"underworld_4"
+index = 4
+campaign_index = 16
+display_name = "Casino of Souls"
+blurb = "High rollers and higher stakes. Watch the slot machines."
+destination = &"underworld"
+hull = &"large"
+budget = 6600
+ticket_price = 34
+duration = 270.0
+waves = Array[Dictionary]([{
+"count": 13,
+"t": 0.0
+}, {
+"count": 10,
+"t": 38.0
+}, {
+"count": 9,
+"t": 81.0
+}, {
+"count": 8,
+"t": 124.0
+}, {
+"count": 6,
+"t": 167.5
+}])
+archetype_weights = {
+&"film_buff": 0.25,
+&"fitness_fan": 0.15,
+&"gamer": 0.4,
+&"holidaymaker": 0.2
+}
+scheduled_events = Array[Dictionary]([{
+"event": &"lunch_rush",
+"t": 50.0
+}, {
+"event": &"haunting",
+"t": 100.0
+}, {
+"event": &"captains_dinner",
+"t": 150.0
+}, {
+"event": &"power_surge",
+"t": 205.0
+}])
+random_event_interval = 90.0
+star_goals = Array[Dictionary]([{
+"type": "rating",
+"value": 33
+}, {
+"type": "profit",
+"value": 3250
+}, {
+"type": "rating",
+"value": 66
+}])
+mess_mult = 1.35
+health_mult = 0.74
+decay_mult = 1.05

@@ -1,0 +1,59 @@
+[gd_resource type="Resource" script_class="LevelDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/level_def.gd" id="1_0luvl"]
+
+[resource]
+script = ExtResource("1_0luvl")
+id = &"med_4"
+index = 4
+campaign_index = 4
+display_name = "Spa Day at Sea"
+blurb = "Sticky guests, steamy saunas and a little too much shrimp."
+hull = &"medium"
+budget = 3600
+ticket_price = 24
+duration = 210.0
+waves = Array[Dictionary]([{
+"count": 6,
+"t": 0.0
+}, {
+"count": 5,
+"t": 29.5
+}, {
+"count": 4,
+"t": 63.0
+}, {
+"count": 4,
+"t": 96.5
+}, {
+"count": 3,
+"t": 130.0
+}])
+archetype_weights = {
+&"film_buff": 0.2,
+&"fitness_fan": 0.2,
+&"gamer": 0.15,
+&"holidaymaker": 0.45
+}
+scheduled_events = Array[Dictionary]([{
+"event": &"heat_wave",
+"t": 60.0
+}, {
+"event": &"food_poisoning",
+"t": 120.0
+}, {
+"event": &"lunch_rush",
+"t": 160.0
+}])
+star_goals = Array[Dictionary]([{
+"type": "rating",
+"value": 41
+}, {
+"type": "rating",
+"value": 62
+}, {
+"type": "no_lost_guests"
+}])
+mess_mult = 1.15
+health_mult = 0.87
+decay_mult = 1.08

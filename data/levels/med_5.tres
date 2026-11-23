@@ -1,0 +1,60 @@
+[gd_resource type="Resource" script_class="LevelDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/level_def.gd" id="1_cyp4l"]
+
+[resource]
+script = ExtResource("1_cyp4l")
+id = &"med_5"
+index = 5
+campaign_index = 5
+display_name = "Captain's Table"
+blurb = "Fine dining for fussy folk. The captain wants a full house."
+hull = &"medium"
+budget = 4400
+ticket_price = 26
+duration = 220.0
+waves = Array[Dictionary]([{
+"count": 7,
+"t": 0.0
+}, {
+"count": 6,
+"t": 31.0
+}, {
+"count": 5,
+"t": 66.0
+}, {
+"count": 5,
+"t": 101.0
+}, {
+"count": 2,
+"t": 136.5
+}])
+archetype_weights = {
+&"film_buff": 0.2,
+&"fitness_fan": 0.2,
+&"gamer": 0.15,
+&"holidaymaker": 0.45
+}
+scheduled_events = Array[Dictionary]([{
+"event": &"lunch_rush",
+"t": 55.0
+}, {
+"event": &"captains_dinner",
+"t": 95.0
+}, {
+"event": &"power_surge",
+"t": 150.0
+}])
+star_goals = Array[Dictionary]([{
+"type": "rating",
+"value": 40
+}, {
+"type": "served",
+"value": 130
+}, {
+"type": "rating",
+"value": 77
+}])
+mess_mult = 1.19
+health_mult = 0.84
+decay_mult = 1.12

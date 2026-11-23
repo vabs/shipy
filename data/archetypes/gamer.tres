@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ArchetypeDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/archetype_def.gd" id="1_nyp5u"]
+
+[resource]
+script = ExtResource("1_nyp5u")
+id = &"gamer"
+display_name = "Gamer"
+prop = &"headphones"
+body_color = Color(0.22745098, 0.627451, 0.78431374, 1)
+favorite_tags = Array[StringName]([&"gaming"])
+favorite_rooms = Array[StringName]([&"arcade", &"casino"])
+off_tag_fun_decay_mult = 2.0
+quirk_text = "Gets bored twice as fast unless playing games."

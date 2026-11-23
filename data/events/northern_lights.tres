@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="EventDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/event_def.gd" id="1_vxecg"]
+
+[resource]
+script = ExtResource("1_vxecg")
+id = &"northern_lights"
+display_name = "Northern Lights"
+description = "Everyone rushes to the top deck to watch the sky dance."
+duration = 40.0
+destination_lock = &"arctic"
+icon = &"aurora"
+room_appeal_mult = {
+&"top_deck": 2.5
+}
+top_deck_rush = true
+top_deck_fun_rate = 1.5
+suspend_cold = true

@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_hacgs"]
+
+[resource]
+script = ExtResource("1_hacgs")
+id = &"casino"
+display_name = "Casino"
+category = &"fun"
+width = 4
+capacity = 4
+service_time = 10.0
+satisfies = {
+&"fun": 95.0
+}
+fun_tag = &"gaming"
+appeal = 1.1
+spend = 14
+cost = 650
+upkeep = 9.0
+power = 4
+water = 1
+mess_chance = 0.12
+breakdown_time = 100.0
+wear_per_use = 5.0
+unlock_level = 13
+destination_lock = &"underworld"
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 2,
+"cost": 390,
+"speed_mult": 1.0
+}, {
+"capacity_add": 2,
+"cost": 585,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.7019608, 0.6156863, 0.85882354, 1),
+"wall": Color(0.1764706, 0.41568628, 0.30980393, 1)
+}
+description = "Fortunes won, souls wagered."

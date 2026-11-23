@@ -1,0 +1,71 @@
+[gd_resource type="Resource" script_class="LevelDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/level_def.gd" id="1_8cove"]
+
+[resource]
+script = ExtResource("1_8cove")
+id = &"underworld_6"
+index = 6
+campaign_index = 18
+display_name = "Crown of Shadows"
+blurb = "The final voyage. Every problem at once, all the way down."
+destination = &"underworld"
+hull = &"large"
+budget = 7400
+ticket_price = 36
+duration = 300.0
+waves = Array[Dictionary]([{
+"count": 16,
+"t": 0.0
+}, {
+"count": 12,
+"t": 42.0
+}, {
+"count": 11,
+"t": 90.0
+}, {
+"count": 10,
+"t": 138.0
+}, {
+"count": 7,
+"t": 186.0
+}])
+archetype_weights = {
+&"film_buff": 0.25,
+&"fitness_fan": 0.15,
+&"gamer": 0.4,
+&"holidaymaker": 0.2
+}
+scheduled_events = Array[Dictionary]([{
+"event": &"lunch_rush",
+"t": 45.0
+}, {
+"event": &"haunting",
+"t": 85.0
+}, {
+"event": &"captains_dinner",
+"t": 135.0
+}, {
+"event": &"power_surge",
+"t": 185.0
+}, {
+"event": &"haunting",
+"t": 225.0
+}, {
+"event": &"food_poisoning",
+"t": 250.0
+}])
+random_event_interval = 70.0
+star_goals = Array[Dictionary]([{
+"type": "rating",
+"value": 33
+}, {
+"type": "rating",
+"value": 45
+}, {
+"type": "served",
+"value": 360
+}])
+mess_mult = 1.5
+health_mult = 0.66
+decay_mult = 1.08

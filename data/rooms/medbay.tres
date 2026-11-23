@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_i517u"]
+
+[resource]
+script = ExtResource("1_i517u")
+id = &"medbay"
+display_name = "Medbay"
+category = &"service"
+width = 2
+capacity = 2
+service_time = 6.0
+spend = 5
+cost = 300
+upkeep = 6.0
+power = 2
+water = 1
+unlock_level = 3
+colors = {
+"accent": Color(0.9098039, 0.3137255, 0.35686275, 1),
+"wall": Color(0.96862745, 0.95686275, 0.9254902, 1)
+}
+description = "Cures seasickness and dodgy shrimp."

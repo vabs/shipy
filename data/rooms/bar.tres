@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_tatfu"]
+
+[resource]
+script = ExtResource("1_tatfu")
+id = &"bar"
+display_name = "Bar"
+category = &"fun"
+width = 3
+capacity = 4
+service_time = 9.0
+satisfies = {
+&"fun": 70.0
+}
+fun_tag = &"relax"
+spend = 9
+cost = 250
+upkeep = 5.0
+power = 2
+water = 1
+mess_chance = 0.18
+breakdown_time = 100.0
+wear_per_use = 5.0
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 2,
+"cost": 150,
+"speed_mult": 1.0
+}, {
+"capacity_add": 2,
+"cost": 225,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(1, 0.78431374, 0.34117648, 1),
+"wall": Color(0.94509804, 0.8235294, 0.7137255, 1)
+}
+description = "Cocktails and chatter."

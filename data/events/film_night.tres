@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="EventDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/event_def.gd" id="1_wl1ox"]
+
+[resource]
+script = ExtResource("1_wl1ox")
+id = &"film_night"
+display_name = "Film Night"
+description = "The cinema is the place to be. Everyone fancies a movie."
+duration = 60.0
+icon = &"film"
+room_appeal_mult = {
+&"cinema": 2.5
+}
+need_set = {
+&"fun": 45.0
+}

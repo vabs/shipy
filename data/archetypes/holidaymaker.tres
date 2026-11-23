@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ArchetypeDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/archetype_def.gd" id="1_nmvbv"]
+
+[resource]
+script = ExtResource("1_nmvbv")
+id = &"holidaymaker"
+display_name = "Holidaymaker"
+body_color = Color(1, 0.78431374, 0.34117648, 1)
+favorite_tags = Array[StringName]([&"relax", &"water"])
+favorite_rooms = Array[StringName]([&"pool", &"deck_chairs", &"bar"])
+quirk_text = "Balanced: loves the pool, the bar and a good sunbed."

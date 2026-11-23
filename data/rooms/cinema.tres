@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_crcly"]
+
+[resource]
+script = ExtResource("1_crcly")
+id = &"cinema"
+display_name = "Cinema"
+category = &"fun"
+width = 4
+capacity = 6
+service_time = 13.0
+satisfies = {
+&"fun": 90.0
+}
+fun_tag = &"movies"
+spend = 6
+cost = 400
+upkeep = 7.0
+power = 4
+mess_chance = 0.1
+breakdown_time = 120.0
+wear_per_use = 4.0
+unlock_level = 2
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 3,
+"cost": 240,
+"speed_mult": 1.0
+}, {
+"capacity_add": 3,
+"cost": 360,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.7019608, 0.6156863, 0.85882354, 1),
+"wall": Color(0.23137255, 0.2, 0.34509805, 1)
+}
+description = "Popcorn and plot twists."

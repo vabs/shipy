@@ -1,0 +1,60 @@
+[gd_resource type="Resource" script_class="LevelDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/level_def.gd" id="1_p0e3l"]
+
+[resource]
+script = ExtResource("1_p0e3l")
+id = &"underworld_1"
+campaign_index = 13
+display_name = "Gloom Cruise"
+blurb = "Spooky! Ghosts drift through the decks. Click them away."
+destination = &"underworld"
+hull = &"medium"
+budget = 5200
+ticket_price = 30
+duration = 240.0
+waves = Array[Dictionary]([{
+"count": 9,
+"t": 0.0
+}, {
+"count": 7,
+"t": 33.5
+}, {
+"count": 6,
+"t": 72.0
+}, {
+"count": 6,
+"t": 110.5
+}, {
+"count": 4,
+"t": 149.0
+}])
+archetype_weights = {
+&"film_buff": 0.25,
+&"fitness_fan": 0.15,
+&"gamer": 0.4,
+&"holidaymaker": 0.2
+}
+scheduled_events = Array[Dictionary]([{
+"event": &"haunting",
+"t": 90.0
+}, {
+"event": &"lunch_rush",
+"t": 150.0
+}, {
+"event": &"power_surge",
+"t": 190.0
+}])
+star_goals = Array[Dictionary]([{
+"type": "rating",
+"value": 21
+}, {
+"type": "profit",
+"value": 1800
+}, {
+"type": "rating",
+"value": 52
+}])
+mess_mult = 1.14
+health_mult = 0.88
+decay_mult = 1.14

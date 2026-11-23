@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="HullDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/hull_def.gd" id="1_06awj"]
+
+[resource]
+script = ExtResource("1_06awj")
+id = &"medium"
+display_name = "Coastal Liner"
+width = 32
+decks = 5
+power = 26
+water = 24
+max_staff = 6

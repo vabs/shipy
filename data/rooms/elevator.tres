@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_23o7h"]
+
+[resource]
+script = ExtResource("1_23o7h")
+id = &"elevator"
+display_name = "Elevator"
+category = &"transport"
+capacity = 4
+service_time = 0.0
+cost = 400
+upkeep = 4.0
+power = 2
+placement = &"any"
+unlock_level = 7
+colors = {
+"accent": Color(1, 0.78431374, 0.34117648, 1),
+"wall": Color(0.72156864, 0.76862746, 0.8156863, 1)
+}
+description = "Connects every deck. Carries four."

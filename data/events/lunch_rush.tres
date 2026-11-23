@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="EventDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/event_def.gd" id="1_2683t"]
+
+[resource]
+script = ExtResource("1_2683t")
+id = &"lunch_rush"
+display_name = "Lunch Rush"
+description = "Everyone is suddenly starving!"
+icon = &"fork"
+need_set = {
+&"hunger": 20.0
+}

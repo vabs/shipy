@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="DestinationDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/destination_def.gd" id="1_f1o2p"]
+
+[resource]
+script = ExtResource("1_f1o2p")
+id = &"underworld"
+display_name = "Underworld"
+stars_required = 24
+sky_top = Color(0.16470589, 0.078431375, 0.3137255, 1)
+sky_bottom = Color(0.7019608, 0.22745098, 0.56078434, 1)
+sea = Color(0.22745098, 0.12156863, 0.36862746, 1)
+twist_text = "Ghosts drift through the decks, spooking guests and hurrying queues. Banish them!"
+ghost_interval = Vector2(25, 40)
+random_events = Array[StringName]([&"haunting"])
+new_room = &"casino"

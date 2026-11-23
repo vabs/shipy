@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_k017u"]
+
+[resource]
+script = ExtResource("1_k017u")
+id = &"gym"
+display_name = "Gym"
+category = &"fun"
+width = 3
+capacity = 3
+service_time = 9.0
+satisfies = {
+&"fun": 75.0
+}
+fun_tag = &"fitness"
+appeal = 0.9
+spend = 3
+cost = 300
+upkeep = 5.0
+power = 2
+water = 1
+mess_chance = 0.15
+breakdown_time = 95.0
+wear_per_use = 6.0
+unlock_level = 3
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 2,
+"cost": 180,
+"speed_mult": 1.0
+}, {
+"capacity_add": 2,
+"cost": 270,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.49411765, 0.8392157, 0.64705884, 1),
+"wall": Color(0.8392157, 0.92941177, 0.8666667, 1)
+}
+description = "Treadmills with a sea view."

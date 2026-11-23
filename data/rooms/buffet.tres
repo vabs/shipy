@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_dm5fu"]
+
+[resource]
+script = ExtResource("1_dm5fu")
+id = &"buffet"
+display_name = "Buffet"
+category = &"food"
+width = 4
+capacity = 4
+service_time = 8.0
+satisfies = {
+&"hunger": 85.0
+}
+spend = 4
+cost = 300
+upkeep = 6.0
+power = 3
+water = 2
+mess_chance = 0.22
+breakdown_time = 110.0
+wear_per_use = 5.0
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 2,
+"cost": 180,
+"speed_mult": 1.0
+}, {
+"capacity_add": 2,
+"cost": 270,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.9098039, 0.3137255, 0.35686275, 1),
+"wall": Color(0.9843137, 0.8901961, 0.72156864, 1)
+}
+description = "All-you-can-eat. Messy."
+sick_chance = 0.015

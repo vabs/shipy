@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_q2g2d"]
+
+[resource]
+script = ExtResource("1_q2g2d")
+id = &"generator"
+display_name = "Generator"
+category = &"utility"
+service_time = 0.0
+cost = 200
+upkeep = 3.0
+power = -8
+unlock_level = 3
+colors = {
+"accent": Color(1, 0.78431374, 0.34117648, 1),
+"wall": Color(0.6039216, 0.64705884, 0.69411767, 1)
+}
+description = "Supplies 8 power."

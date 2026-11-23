@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ArchetypeDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/archetype_def.gd" id="1_ptnno"]
+
+[resource]
+script = ExtResource("1_ptnno")
+id = &"film_buff"
+display_name = "Film Buff"
+prop = &"glasses_3d"
+body_color = Color(0.7019608, 0.6156863, 0.85882354, 1)
+favorite_tags = Array[StringName]([&"movies"])
+favorite_rooms = Array[StringName]([&"cinema"])
+patience_mult_non_favorite = 0.6
+quirk_text = "Loses patience 40% faster in any queue but the cinema's."

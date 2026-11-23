@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EventDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/event_def.gd" id="1_vvfus"]
+
+[resource]
+script = ExtResource("1_vvfus")
+id = &"heat_wave"
+display_name = "Heat Wave"
+description = "Sticky guests crowd the pool."
+duration = 50.0
+destination_lock = &"med"
+icon = &"thermo"
+room_appeal_mult = {
+&"pool": 2.0
+}
+hygiene_decay_mult = 1.8

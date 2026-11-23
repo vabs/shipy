@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_ylfdb"]
+
+[resource]
+script = ExtResource("1_ylfdb")
+id = &"sauna"
+display_name = "Sauna"
+width = 2
+capacity = 2
+service_time = 8.0
+satisfies = {
+&"hygiene": 60.0,
+&"rest": 50.0
+}
+fun_tag = &"relax"
+appeal = 0.9
+spend = 5
+cost = 280
+upkeep = 5.0
+power = 3
+water = 2
+mess_chance = 0.1
+breakdown_time = 100.0
+wear_per_use = 5.0
+unlock_level = 4
+destination_lock = &"med"
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 1,
+"cost": 168,
+"speed_mult": 1.0
+}, {
+"capacity_add": 1,
+"cost": 252,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(1, 0.78431374, 0.34117648, 1),
+"wall": Color(0.8509804, 0.65882355, 0.46666667, 1)
+}
+description = "Steamy relaxation."

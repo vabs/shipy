@@ -1,0 +1,59 @@
+[gd_resource type="Resource" script_class="LevelDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/level_def.gd" id="1_pg72m"]
+
+[resource]
+script = ExtResource("1_pg72m")
+id = &"med_1"
+display_name = "Maiden Voyage"
+blurb = "Learn the ropes with a handful of cheerful passengers."
+budget = 1700
+waves = Array[Dictionary]([{
+"count": 4,
+"t": 0.0
+}, {
+"count": 4,
+"t": 25.0
+}])
+archetype_weights = {
+&"film_buff": 0.1,
+&"fitness_fan": 0.1,
+&"gamer": 0.1,
+&"holidaymaker": 0.7
+}
+scheduled_events = Array[Dictionary]([{
+"event": &"power_surge",
+"t": 80.0
+}, {
+"event": &"lunch_rush",
+"t": 120.0
+}])
+star_goals = Array[Dictionary]([{
+"type": "rating",
+"value": 45
+}, {
+"type": "served",
+"value": 45
+}, {
+"type": "no_lost_guests"
+}])
+preset_rooms = Array[Dictionary]([{
+"deck": 1,
+"locked": true,
+"room": &"cabin",
+"x": 0
+}, {
+"deck": 1,
+"locked": true,
+"room": &"toilets",
+"x": 2
+}, {
+"deck": 1,
+"locked": true,
+"room": &"stairs",
+"x": 11
+}])
+tutorial = true
+mutiny_enabled = false
+health_mult = 2.2
+patience_mult = 1.2

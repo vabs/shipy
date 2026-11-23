@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_cwt83"]
+
+[resource]
+script = ExtResource("1_cwt83")
+id = &"deck_chairs"
+display_name = "Deck Chairs"
+width = 3
+capacity = 3
+service_time = 9.0
+satisfies = {
+&"fun": 30.0,
+&"rest": 55.0
+}
+fun_tag = &"relax"
+appeal = 0.8
+cost = 150
+upkeep = 1.0
+placement = &"top_deck"
+mess_chance = 0.06
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 2,
+"cost": 90,
+"speed_mult": 1.0
+}, {
+"capacity_add": 2,
+"cost": 135,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.9098039, 0.3137255, 0.35686275, 1),
+"wall": Color(1, 0.9137255, 0.6901961, 1)
+}
+description = "Sun loungers under umbrellas."
