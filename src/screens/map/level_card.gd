@@ -24,6 +24,7 @@ var _blurb: Label
 var _chip_guests: Label
 var _chip_hull: Label
 var _hull_glyph: _HullGlyph
+var _feature_row: HBoxContainer
 var _chip_time: Label
 var _goal_icons: Array[GlyphView] = []
 var _goal_labels: Array[Label] = []
@@ -209,6 +210,11 @@ func _build() -> void:
 	_chip_time = Label.new()
 	chips.add_child(_chip(GlyphView.new(&"clock", 22.0), _chip_time))
 	info.add_child(chips)
+	# what is new on this voyage: VIPs, families, storms, a port stop, tired crew (icon plates with tooltips)
+	_feature_row = HBoxContainer.new()
+	_feature_row.add_theme_constant_override("separation", 5)
+	_feature_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	info.add_child(_feature_row)
 	var goals := UIKit.vbox(3)
 	goals.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for i in range(3):
@@ -266,6 +272,7 @@ func set_level(def: LevelDef, accent: Color) -> void:
 	_hull_glyph.hull = def.hull
 	_hull_glyph.queue_redraw()
 	_chip_time.text = OvUtil.time_text(def.duration)
+	_set_features(def)
 	for i in range(3):
 		if i < def.star_goals.size():
 			_goal_icons[i].glyph = GoalText.icon(def.star_goals[i])
@@ -285,6 +292,30 @@ func set_level(def: LevelDef, accent: Color) -> void:
 	focus_mode = Control.FOCUS_ALL
 	tooltip_text = _reason.text
 	_restyle()
+
+
+## Feature plates (VIP, families, storm, port stop, tired crew) for a level; each one explains itself in its tooltip.
+func _set_features(def: LevelDef) -> void:
+	for c in _feature_row.get_children():
+		_feature_row.remove_child(c)
+		c.queue_free()
+	var items: Array[Dictionary] = def.features()
+	_feature_row.visible = not items.is_empty()
+	for it in items:
+		var p := PanelContainer.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(it["tint"])
+		sb.set_corner_radius_all(11)
+		sb.content_margin_left = 4
+		sb.content_margin_right = 4
+		sb.content_margin_top = 2
+		sb.content_margin_bottom = 2
+		sb.anti_aliasing = true
+		p.add_theme_stylebox_override("panel", sb)
+		p.mouse_filter = Control.MOUSE_FILTER_PASS
+		p.tooltip_text = String(it["text"])
+		p.add_child(GlyphView.new(StringName(it["icon"]), 24.0))
+		_feature_row.add_child(p)
 
 
 func _restyle() -> void:

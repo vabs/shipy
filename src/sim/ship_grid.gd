@@ -127,15 +127,21 @@ func room_lock_reason(def_id: StringName) -> String:
 
 
 func can_place(def_id: StringName, deck: int, x: int, ignore_uid: int = -1) -> Dictionary:
+	return _check_place(def_id, deck, x, ignore_uid, enforce_money, enforce_unlock, enforce_utilities, money)
+
+
+## The placement rules with explicit switches (the port uses the grid's own flags; a mid-voyage refit forces all three on with
+## the voyage money as `funds`).
+func _check_place(def_id: StringName, deck: int, x: int, ignore_uid: int, use_money: bool, use_unlock: bool, use_utilities: bool, funds: int) -> Dictionary:
 	var def: RoomDef = ContentStore.room(def_id)
 	if def == null:
 		return _res(false, "Unknown room")
 	var moving: bool = ignore_uid >= 0
-	if enforce_unlock and not def.is_available(campaign_index, destination):
+	if use_unlock and not def.is_available(campaign_index, destination):
 		if def.unlock_level > campaign_index:
 			return _res(false, "Unlocks at level %d" % def.unlock_level)
 		return _res(false, "Not available here")
-	if enforce_money and not moving and def.cost > money:
+	if use_money and not moving and def.cost > funds:
 		return _res(false, "Not enough money")
 	var top: int = hull.decks - 1
 	if x < 0 or x + def.width > hull.width or deck < 0 or deck > top:
@@ -156,11 +162,45 @@ func can_place(def_id: StringName, deck: int, x: int, ignore_uid: int = -1) -> D
 		if def.is_stairs() and not hit.occupies(deck, x, hull.decks):
 			return _res(false, "Needs 2 free decks")
 		return _res(false, "Overlaps %s" % hit.def.display_name)
-	if enforce_utilities and not moving:
+	if use_utilities and not moving:
 		if def.power > 0 and power_used() + def.power > power_capacity():
 			return _res(false, "Not enough power")
 		if def.water > 0 and water_used() + def.water > water_capacity():
 			return _res(false, "Not enough water")
+	return _res(true)
+
+
+## Quick refit at a port stop (docs/SPEC.md §13.8): can_place with the voyage money (`funds`), unlocks and utilities always enforced, plus
+## connectivity: the new room must be reachable from the gangway deck (stairs just need one of their two decks to be; an elevator
+## connects everything by itself). Nothing may overlap, as always.
+func can_refit_place(def_id: StringName, deck: int, x: int, funds: int) -> Dictionary:
+	var res: Dictionary = _check_place(def_id, deck, x, -1, true, true, true, funds)
+	if not bool(res["ok"]):
+		return res
+	var def: RoomDef = ContentStore.room(def_id)
+	if def.is_elevator():
+		return res
+	var reach: Array[int] = graph.reachable_decks(hull.gangway_deck)
+	if def.is_stairs():
+		if not reach.has(deck) and not reach.has(deck + 1):
+			return _res(false, "Not connected")
+	elif not reach.has(deck):
+		return _res(false, "Not connected")
+	return res
+
+
+## Upgrade rules for a refit: like can_upgrade with the voyage money and the tier unlock levels always enforced.
+func can_refit_upgrade(uid: int, funds: int) -> Dictionary:
+	var r: PlacedRoom = layout.get_room(uid)
+	if r == null:
+		return _res(false, "No such room")
+	var cost: int = r.def.upgrade_cost(r.tier)
+	if cost < 0:
+		return _res(false, "Fully upgraded" if r.def.max_tier() > 0 else "Can't be upgraded")
+	if campaign_index < tier_unlock_level(r.tier + 1):
+		return _res(false, "Unlocks at level %d" % tier_unlock_level(r.tier + 1))
+	if cost > funds:
+		return _res(false, "Not enough money")
 	return _res(true)
 
 
@@ -302,7 +342,7 @@ func validate_for_voyage(guests: int = -1, staff_total: int = -1) -> Dictionary:
 		if not reach.has(int(d)):
 			errors.append("%s is not connected to the gangway deck. Add stairs or an elevator." % deck_name(int(d)))
 	if guests < 0 and level != null:
-		guests = level.total_guests()
+		guests = level.peak_guests()
 	var beds: int = 0
 	for r in layout.rooms:
 		if r.def.id == &"cabin":
@@ -327,4 +367,6 @@ func validate_for_voyage(guests: int = -1, staff_total: int = -1) -> Dictionary:
 		warnings.append("Nothing fun to do: guests will get bored.")
 	if staff_total == 0:
 		warnings.append("No crew hired: messes and breakdowns will pile up.")
+	elif level != null and level.staff_fatigue and layout.count_of(&"crew_quarters") == 0:
+		warnings.append("Crew tire out on this voyage. Build crew quarters or they will nap in the corridors.")
 	return {"errors": errors, "warnings": warnings}

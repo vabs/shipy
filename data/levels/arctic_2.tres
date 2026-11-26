@@ -8,7 +8,7 @@ id = &"arctic_2"
 index = 2
 campaign_index = 8
 display_name = "Frostbitten Fun"
-blurb = "Skating, popcorn and a surprising number of broken machines."
+blurb = "Skating, popcorn, a storm on the horizon and a surprising number of broken machines."
 destination = &"arctic"
 hull = &"medium"
 budget = 4300
@@ -38,24 +38,36 @@ archetype_weights = {
 }
 scheduled_events = Array[Dictionary]([{
 "event": &"film_night",
-"t": 60.0
+"t": 55.0
+}, {
+"event": &"storm",
+"t": 100.0
 }, {
 "event": &"northern_lights",
-"t": 120.0
+"t": 160.0
 }, {
 "event": &"power_surge",
-"t": 170.0
+"t": 205.0
 }])
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 40
+"value": 44
 }, {
-"type": "served",
-"value": 170
+"type": "profit",
+"value": 1400
 }, {
 "type": "rating",
-"value": 82
+"value": 81
 }])
-mess_mult = 1.19
-health_mult = 0.84
-decay_mult = 1.2
+mess_mult = 1.02
+health_mult = 0.96
+decay_mult = 1.13
+staff_fatigue = true
+vips = Array[Dictionary]([{
+"kind": &"inspector",
+"t": 40.0
+}, {
+"kind": &"critic",
+"t": 105.0
+}])
+group_ratio = 0.33

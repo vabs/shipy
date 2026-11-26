@@ -10,3 +10,4 @@ handles = &"breakdown"
 wage = 60
 work_time = 7.0
 speed = 2.6
+description = "Repairs broken rooms"

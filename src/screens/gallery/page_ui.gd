@@ -286,32 +286,24 @@ func _crew_card() -> Control:
 	var v := UIKit.vbox(12)
 	card.add_child(v)
 	v.add_child(_heading("Crew & Alerts"))
-	var r := UIKit.hbox(14)
-	var roster := [
-		["Mopsy", &"janitor", &"sun_hat", Color("FFB347"), &"", false],
-		["Bolt", &"mechanic", &"sun_hat", Color("FFB347"), &"", true],
-		["Sunny", &"", &"sun_hat", Color("FFB347"), &"happy", false],
-		["Rex", &"", &"headband", Color("6EC6A5"), &"angry", false],
-		["Mia", &"", &"headphones", Color("FF7FA8"), &"need_hunger", false],
+	# the whole crew (SPEC §13.3), then a few guests with their mood bubbles
+	var crew := [
+		["Mopsy", &"janitor", Color("FFB347"), &"", false], ["Bolt", &"mechanic", Color("FFB347"), &"", true],
+		["Doc", &"medic", Color("FFB347"), &"", false], ["Jazz", &"entertainer", Color("FFB347"), &"", false],
+		["Gus", &"chef", Color("FFB347"), &"", false], ["Moss", &"warden", Color("FFB347"), &"", false],
 	]
-	for e in roster:
-		var col := UIKit.vbox(4)
-		var bp := BeanPortrait.new()
-		bp.portrait_size = 76.0
-		bp.staff_role = e[1]
-		bp.prop = e[2]
-		bp.body_color = e[3]
-		bp.mood = e[4]
-		bp.selected = e[5]
-		bp.plate_color = Color("CDEFFB") if e[1] == &"" else Color("FFE6A8")
-		col.add_child(bp)
-		var nl := Label.new()
-		nl.text = e[0]
-		nl.theme_type_variation = &"SmallLabel"
-		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(nl)
-		r.add_child(col)
+	var guests := [
+		["Sunny", &"sun_hat", Color("FFB347"), &"happy"], ["Rex", &"headband", Color("6EC6A5"), &"angry"],
+		["Mia", &"headphones", Color("FF7FA8"), &"need_hunger"],
+	]
+	var r := UIKit.hbox(10)
+	for e in crew:
+		r.add_child(_portrait_cell(e[0], e[1], &"sun_hat", e[2], e[3], e[4]))
 	v.add_child(r)
+	var r2 := UIKit.hbox(10)
+	for e in guests:
+		r2.add_child(_portrait_cell(e[0], &"", e[1], e[2], e[3], false))
+	v.add_child(r2)
 	# scrolling alert feed
 	var sc := ScrollContainer.new()
 	sc.custom_minimum_size = Vector2(0, 170)
@@ -355,6 +347,25 @@ func _crew_card() -> Control:
 	rr.add_child(tip)
 	v.add_child(rr)
 	return card
+
+
+func _portrait_cell(label: String, role: StringName, prop: StringName, body: Color, mood: StringName, selected: bool) -> Control:
+	var col := UIKit.vbox(2)
+	var bp := BeanPortrait.new()
+	bp.portrait_size = 64.0
+	bp.staff_role = role
+	bp.prop = prop
+	bp.body_color = body
+	bp.mood = mood
+	bp.selected = selected
+	bp.plate_color = Color("CDEFFB") if role == &"" else Color("FFE6A8")
+	col.add_child(bp)
+	var nl := Label.new()
+	nl.text = label
+	nl.theme_type_variation = &"SmallLabel"
+	nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(nl)
+	return col
 
 
 # ---- bottom (port build bar) ------------------------------------------------------------------

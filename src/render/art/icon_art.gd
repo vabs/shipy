@@ -7,6 +7,9 @@ extends RefCounted
 ##       icon ids: mess breakdown sick angry ghost coin star star_empty heart smile meh frown
 ##                 need_rest need_hunger need_fun need_hygiene power water wrench mop clock
 ##                 pause play fast faster lock warning guest staff event
+##                 medic entertainer chef warden (crew role glyphs, see IconArt.role_icon) energy zzz
+##                 vip critic celebrity inspector (VIP star + the three kinds) kid family (propeller kid, linked hearts)
+##                 seasick (a queasy seafoam face with spiral eyes: the storm's mood bubble) storm (a dark cloud with a bolt and rain)
 ##   IconArt.draw_room_icon(ci, room_id: StringName, center: Vector2, size: float)   # white glyph on a coloured badge
 ##   IconArt.draw_bubble(ci, anchor: Vector2, icon: StringName, t := 1.0, alpha := 1.0, k := 1.0,
 ##                       colorblind := false, problem := false)
@@ -21,11 +24,12 @@ const ICONS: Array[StringName] = [
 	&"mess", &"breakdown", &"sick", &"angry", &"ghost", &"coin", &"star", &"star_empty", &"heart",
 	&"smile", &"meh", &"frown", &"need_rest", &"need_hunger", &"need_fun", &"need_hygiene", &"power",
 	&"water", &"wrench", &"mop", &"clock", &"pause", &"play", &"fast", &"faster", &"lock", &"warning",
-	&"guest", &"staff", &"event",
+	&"guest", &"staff", &"event", &"medic", &"entertainer", &"chef", &"warden", &"energy", &"zzz",
+	&"vip", &"critic", &"celebrity", &"inspector", &"kid", &"family", &"seasick", &"storm",
 ]
 const ROOM_ICONS: Array[StringName] = [
 	&"cabin", &"buffet", &"toilets", &"bar", &"pool", &"deck_chairs", &"cinema", &"gym", &"arcade",
-	&"restaurant", &"medbay", &"sauna", &"ice_rink", &"casino", &"stairs", &"elevator", &"generator",
+	&"restaurant", &"medbay", &"sauna", &"ice_rink", &"casino", &"crew_quarters", &"kids_club", &"stairs", &"elevator", &"generator",
 	&"water_tank",
 ]
 
@@ -34,11 +38,20 @@ const _BADGE: Dictionary = {
 	&"bar": Color("D9548F"), &"pool": Color("2FA3CC"), &"deck_chairs": Color("F2A93B"),
 	&"cinema": Color("7B63B5"), &"gym": Color("4DB583"), &"arcade": Color("E8505B"),
 	&"restaurant": Color("C0415A"), &"medbay": Color("FFFFFF"), &"sauna": Color("C9803E"),
-	&"ice_rink": Color("5BB4E8"), &"casino": Color("6A4BA8"), &"stairs": Color("8A9BB5"),
+	&"ice_rink": Color("5BB4E8"), &"casino": Color("6A4BA8"), &"crew_quarters": Color("5F7FC4"), &"kids_club": Color("F0709A"), &"stairs": Color("8A9BB5"),
 	&"elevator": Color("6F7E96"), &"generator": Color("F2A93B"), &"water_tank": Color("3AA0C8"),
 }
 
 static var _cache: Dictionary = {}
+
+
+## Icon id that stands for a crew role (janitor = mop, mechanic = wrench, the rest have their own glyph).
+static func role_icon(role: StringName) -> StringName:
+	match role:
+		&"janitor": return &"mop"
+		&"mechanic": return &"wrench"
+		&"medic", &"entertainer", &"chef", &"warden": return role
+	return &"staff"
 
 
 static func room_badge_color(room_id: StringName) -> Color:
@@ -194,6 +207,20 @@ static func draw_icon(ci: CanvasItem, icon: StringName, center: Vector2, size: f
 		&"guest": _guest(ci)
 		&"staff": _staff(ci)
 		&"event": _event(ci)
+		&"medic": _medic(ci)
+		&"entertainer": _entertainer(ci)
+		&"chef": _chef(ci)
+		&"warden": _warden(ci, t)
+		&"energy": _energy(ci)
+		&"zzz": _zzz_icon(ci, t)
+		&"vip": _vip(ci, t)
+		&"critic": _critic(ci)
+		&"celebrity": _celebrity(ci, t)
+		&"inspector": _inspector(ci)
+		&"kid": _kid(ci, t)
+		&"family": _family(ci)
+		&"seasick": _seasick(ci, t, colorblind)
+		&"storm": _storm_icon(ci, t)
 		_:
 			U.circ(ci, Vector2.ZERO, 0.8, Palette.STEEL)
 			U.circ(ci, Vector2.ZERO, 0.4, Palette.CREAM)
@@ -280,6 +307,52 @@ static func _sick(ci: CanvasItem, t: float, cb: bool) -> void:
 	_spiral(ci, Vector2(0.05, 0.24), 0.42, 2.1, sc, 0.12, t * 3.0)
 	if cb:
 		U.pline(ci, _closed(d), _ol(cb), 0.08)
+
+
+## Seasick: a seafoam face, spiral eyes, a wobbly mouth and a little swell underneath: clearly not the green food-sick droplet.
+static func _seasick(ci: CanvasItem, t: float, cb: bool) -> void:
+	var c := Palette.problem_color(&"seasick", cb)
+	U.circ(ci, Vector2(0.04, 0.06), 0.94, Palette.shade(c, 0.42))
+	U.circ(ci, Vector2.ZERO, 0.94, c)
+	_hl(ci, Vector2(-0.42, -0.5), 0.2, 0.1, 0.5)
+	var ink := Palette.INK
+	_spiral(ci, Vector2(-0.34, -0.2), 0.27, 1.9, ink, 0.085, t * 3.2)
+	_spiral(ci, Vector2(0.34, -0.2), 0.27, 1.9, ink, 0.085, -t * 3.2)
+	var mp := PackedVector2Array()
+	for i in range(9):
+		var f := float(i) / 8.0
+		mp.append(Vector2(-0.34 + 0.68 * f, 0.38 + sin(f * TAU * 1.5 + t * 4.0) * 0.07))
+	U.pline(ci, mp, ink, 0.1)
+	U.circ(ci, Vector2(-0.58, 0.22), 0.17, Color(1, 1, 1, 0.45))
+	U.circ(ci, Vector2(0.58, 0.22), 0.17, Color(1, 1, 1, 0.45))
+	# a little swell rolling under the chin
+	var wv := PackedVector2Array()
+	for i in range(9):
+		var f2 := float(i) / 8.0
+		wv.append(Vector2(-0.5 + f2 * 1.0, 0.7 + sin(f2 * TAU + t * 3.0) * 0.07))
+	U.pline(ci, wv, Color(1, 1, 1, 0.8) if not cb else Color.BLACK, 0.07)
+	if cb:
+		U.ring(ci, Vector2.ZERO, 0.94, Color.BLACK, 0.07)
+
+
+## Storm event icon: a dark cloud with a lightning bolt and a few rain dashes.
+static func _storm_icon(ci: CanvasItem, t: float) -> void:
+	var cloud := Color("8497BC")
+	var under := Color("63749C")
+	U.rbox(ci, Rect2(-0.82, -0.14, 1.64, 0.56), 0.28, under)
+	U.circ(ci, Vector2(-0.36, -0.12), 0.44, cloud)
+	U.circ(ci, Vector2(0.06, -0.4), 0.56, cloud)
+	U.circ(ci, Vector2(0.48, -0.1), 0.42, cloud)
+	U.rbox(ci, Rect2(-0.82, -0.16, 1.64, 0.5), 0.25, cloud)
+	_hl(ci, Vector2(-0.1, -0.55), 0.22, 0.1, 0.4)
+	var bolt := PackedVector2Array([Vector2(0.14, 0.18), Vector2(-0.16, 0.62), Vector2(0.0, 0.62), Vector2(-0.12, 1.0), Vector2(0.3, 0.46), Vector2(0.12, 0.46), Vector2(0.24, 0.18)])
+	var fl := 0.8 + 0.2 * sin(t * 9.0)
+	U.poly_xf(ci, bolt, Vector2(0.03, 0.04), 0.0, Vector2.ONE, Palette.SUN_DEEP)
+	U.poly(ci, bolt, Palette.SUN.lerp(Color.WHITE, 1.0 - fl))
+	for i in range(3):
+		var ox := -0.62 + float(i) * 0.26
+		var ph := fposmod(t * 1.6 + float(i) * 0.33, 1.0)
+		U.line(ci, Vector2(ox - 0.04, 0.5 + ph * 0.3), Vector2(ox - 0.12, 0.7 + ph * 0.3), Color("BFEAFB"), 0.09)
 
 
 static func _angry(ci: CanvasItem, t: float, cb: bool) -> void:
@@ -552,6 +625,154 @@ static func _staff(ci: CanvasItem) -> void:
 	U.ellipse(ci, Vector2(0.2, 0.98), 0.17, 0.1, Palette.NAVY_DARK)
 
 
+## Medic: first-aid case with a red cross.
+static func _medic(ci: CanvasItem) -> void:
+	U.arc(ci, Vector2(0, -0.42), 0.34, PI, TAU, Palette.STEEL_DARK, 0.14, 10)
+	U.rbox(ci, Rect2(-0.82, -0.46, 1.64, 1.28), 0.2, Color("B8C6D8"))
+	U.rbox(ci, Rect2(-0.82, -0.52, 1.64, 1.2), 0.2, Color.WHITE)
+	U.rbox(ci, Rect2(-0.2, -0.38, 0.4, 0.92), 0.06, Palette.CORAL)
+	U.rbox(ci, Rect2(-0.46, -0.12, 0.92, 0.4), 0.06, Palette.CORAL)
+	_hl(ci, Vector2(-0.46, -0.44), 0.26, 0.08, 0.7)
+
+
+## Entertainer: three juggling balls.
+static func _entertainer(ci: CanvasItem) -> void:
+	var cols: Array[Color] = [Palette.CORAL, Palette.SUN, Palette.TEAL]
+	var ps: Array[Vector2] = [Vector2(-0.5, 0.3), Vector2(0.5, 0.3), Vector2(0.0, -0.46)]
+	for i in range(3):
+		U.circ(ci, ps[i] + Vector2(0.04, 0.06), 0.46, Palette.shade(cols[i], 0.35))
+		U.circ(ci, ps[i], 0.44, cols[i])
+		U.circ(ci, ps[i] + Vector2(-0.14, -0.16), 0.12, Color(1, 1, 1, 0.7))
+	U.arc(ci, Vector2(0, 0.62), 0.9, PI * 1.12, PI * 1.88, Color(Palette.INK.r, Palette.INK.g, Palette.INK.b, 0.35), 0.06, 12)
+
+
+## Chef: tall white toque.
+static func _chef(ci: CanvasItem) -> void:
+	for p in [Vector2(-0.4, -0.3), Vector2(0.0, -0.58), Vector2(0.4, -0.28)]:
+		U.circ(ci, p + Vector2(0.03, 0.05), 0.42, Color("C9D1DE"))
+	for p2 in [Vector2(-0.4, -0.3), Vector2(0.0, -0.58), Vector2(0.4, -0.28)]:
+		U.circ(ci, p2, 0.4, Color.WHITE)
+	U.rbox(ci, Rect2(-0.46, -0.3, 0.92, 0.7), 0.08, Color.WHITE)
+	U.rbox(ci, Rect2(-0.5, 0.3, 1.0, 0.36), 0.1, Color("D5DCE8"))
+	U.rbox(ci, Rect2(-0.5, 0.3, 1.0, 0.12), 0.05, Color(1, 1, 1, 0.9))
+	U.line(ci, Vector2(-0.2, -0.12), Vector2(-0.2, 0.22), Color("DCE2EC"), 0.06)
+	U.line(ci, Vector2(0.2, -0.12), Vector2(0.2, 0.22), Color("DCE2EC"), 0.06)
+
+
+## Warden: a hanging lantern on a hooked staff.
+static func _warden(ci: CanvasItem, t: float) -> void:
+	var flick := 0.9 + 0.1 * sin(t * 9.0)
+	U.circ(ci, Vector2(0.22, -0.2), 0.78 * flick, Color(1.0, 0.86, 0.45, 0.18))
+	U.capsule(ci, Vector2(-0.46, 0.95), Vector2(-0.46, -0.78), 0.1, Palette.WOOD_DARK)
+	U.arc(ci, Vector2(-0.12, -0.78), 0.34, PI, TAU + 0.5, Palette.WOOD_DARK, 0.12, 10)
+	U.rbox(ci, Rect2(0.0, -0.62, 0.5, 0.12), 0.04, Palette.STEEL_DARK)
+	U.rbox(ci, Rect2(0.0, 0.1, 0.5, 0.12), 0.04, Palette.STEEL_DARK)
+	U.rbox(ci, Rect2(0.03, -0.5, 0.44, 0.6), 0.1, Color(1.0, 0.86, 0.45))
+	U.circ(ci, Vector2(0.25, -0.22), 0.14 * flick, Color(1.0, 0.99, 0.85))
+	U.line(ci, Vector2(0.25, -0.5), Vector2(0.25, 0.1), Palette.STEEL_DARK, 0.05)
+
+
+## Energy: a lightning bolt on a round plate.
+static func _energy(ci: CanvasItem) -> void:
+	U.circ(ci, Vector2(0.03, 0.06), 0.96, Palette.shade(Palette.MINT_DARK, 0.3))
+	U.circ(ci, Vector2.ZERO, 0.94, Palette.MINT)
+	U.poly_xf(ci, _bolt(), Vector2(0.03, 0.04), 0.0, Vector2(0.58, 0.6), Palette.MINT_DARK)
+	U.poly_xf(ci, _bolt(), Vector2.ZERO, 0.0, Vector2(0.58, 0.6), Color.WHITE)
+	_hl(ci, Vector2(-0.36, -0.5), 0.26, 0.1, 0.4)
+
+
+## "zzz": three z letters climbing, for tired crew.
+static func _zzz_icon(ci: CanvasItem, t: float) -> void:
+	var zc := Palette.LILAC_DARK
+	var sh := Palette.shade(Palette.LILAC_DARK, 0.4)
+	var bob := sin(t * 2.4) * 0.05
+	for i in range(3):
+		var s := 0.34 + 0.16 * float(i)
+		var o := Vector2(-0.55 + 0.42 * float(i), 0.5 - 0.5 * float(i) + bob * float(i))
+		var pts := PackedVector2Array([o + Vector2(-s * 0.5, -s * 0.5), o + Vector2(s * 0.5, -s * 0.5), o + Vector2(-s * 0.5, s * 0.5), o + Vector2(s * 0.5, s * 0.5)])
+		U.pline(ci, pts, sh, 0.2)
+		U.pline(ci, pts, zc, 0.13)
+
+
+## VIP: a gold star badge with a small ribbon tail.
+static func _vip(ci: CanvasItem, t: float) -> void:
+	var gl := 0.5 + 0.5 * sin(t * 3.0)
+	U.circ(ci, Vector2(0.03, 0.06), 0.98, Palette.shade(Palette.VIP_GOLD_DARK, 0.4))
+	U.circ(ci, Vector2.ZERO, 0.96, Palette.VIP_GOLD_DARK)
+	U.circ(ci, Vector2.ZERO, 0.8, Palette.VIP_GOLD)
+	U.ring(ci, Vector2.ZERO, 0.68, Color(1, 1, 1, 0.5 + 0.2 * gl), 0.06)
+	U.star(ci, Vector2(0.03, 0.06), 0.62, Color(0.45, 0.25, 0.05, 0.5), 0.0)
+	U.star(ci, Vector2.ZERO, 0.6, Color.WHITE, 0.0)
+	U.star(ci, Vector2.ZERO, 0.4, Color("FFF1B8"), 0.0)
+	_hl(ci, Vector2(-0.45, -0.5), 0.24, 0.1, 0.5)
+
+
+## Critic: raspberry beret over a notepad.
+static func _critic(ci: CanvasItem) -> void:
+	U.rbox(ci, Rect2(-0.62, -0.1, 1.24, 1.02), 0.12, Color("C9B48C"))
+	U.rbox(ci, Rect2(-0.62, -0.18, 1.24, 1.0), 0.12, Color("FFF8E6"))
+	for k in range(3):
+		U.line(ci, Vector2(-0.38, 0.14 + float(k) * 0.24), Vector2(0.4, 0.14 + float(k) * 0.24), Color("9CB4D8"), 0.06)
+	U.ellipse(ci, Vector2(0.06, -0.46), 0.86, 0.38, Color("7C2442"))
+	U.ellipse(ci, Vector2(0.06, -0.52), 0.84, 0.36, Color("B83A63"))
+	U.circ(ci, Vector2(0.1, -0.9), 0.1, Color("7C2442"))
+	U.ellipse(ci, Vector2(-0.24, -0.66), 0.3, 0.1, Color(1, 1, 1, 0.3))
+
+
+## Celebrity: shades and a sparkle.
+static func _celebrity(ci: CanvasItem, t: float) -> void:
+	var dark := Color("1B2236")
+	U.rbox(ci, Rect2(-0.9, -0.34, 0.8, 0.62), 0.24, dark)
+	U.rbox(ci, Rect2(0.1, -0.34, 0.8, 0.62), 0.24, dark)
+	U.line(ci, Vector2(-0.12, -0.2), Vector2(0.12, -0.2), dark, 0.12)
+	U.poly(ci, PackedVector2Array([Vector2(-0.7, -0.24), Vector2(-0.46, -0.24), Vector2(-0.6, 0.16), Vector2(-0.84, 0.16)]), Color(1, 1, 1, 0.45))
+	U.poly(ci, PackedVector2Array([Vector2(0.3, -0.24), Vector2(0.54, -0.24), Vector2(0.4, 0.16), Vector2(0.16, 0.16)]), Color(1, 1, 1, 0.45))
+	var r := 0.3 + 0.08 * sin(t * 5.0)
+	var p := Vector2(0.55, -0.72)
+	U.poly(ci, PackedVector2Array([p + Vector2(0, -r), p + Vector2(r * 0.28, -r * 0.28), p + Vector2(r, 0), p + Vector2(r * 0.28, r * 0.28), p + Vector2(0, r), p + Vector2(-r * 0.28, r * 0.28), p + Vector2(-r, 0), p + Vector2(-r * 0.28, -r * 0.28)]), Palette.VIP_GOLD)
+	U.circ(ci, Vector2(-0.5, 0.66), 0.1, Palette.VIP_GOLD)
+	U.circ(ci, Vector2(0.1, 0.8), 0.07, Palette.VIP_GOLD)
+
+
+## Inspector: clipboard with ticks.
+static func _inspector(ci: CanvasItem) -> void:
+	U.rbox(ci, Rect2(-0.62, -0.78, 1.24, 1.68), 0.14, Palette.WOOD_DARK)
+	U.rbox(ci, Rect2(-0.5, -0.62, 1.0, 1.4), 0.1, Color("FFFDF4"))
+	U.rbox(ci, Rect2(-0.26, -0.94, 0.52, 0.3), 0.1, Palette.STEEL)
+	for k in range(3):
+		var y := -0.3 + float(k) * 0.42
+		U.pline(ci, PackedVector2Array([Vector2(-0.38, y), Vector2(-0.24, y + 0.12), Vector2(-0.02, y - 0.14)]), Palette.MINT_DARK, 0.1)
+		U.line(ci, Vector2(0.08, y), Vector2(0.38, y), Color("9CB4D8"), 0.07)
+
+
+## Kid: a small bean in a propeller beanie.
+static func _kid(ci: CanvasItem, t: float) -> void:
+	U.capsule(ci, Vector2(0, 0.0), Vector2(0, 0.52), 0.52, Palette.shade(Color("8FD8F0"), 0.3))
+	U.capsule(ci, Vector2(0, -0.02), Vector2(0, 0.5), 0.48, Color("8FD8F0"))
+	U.circ(ci, Vector2(-0.17, 0.18), 0.07, Palette.INK)
+	U.circ(ci, Vector2(0.17, 0.18), 0.07, Palette.INK)
+	U.arc(ci, Vector2(0, 0.28), 0.14, 0.3, PI - 0.3, Palette.INK, 0.05, 6)
+	U.ellipse(ci, Vector2(0, -0.28), 0.55, 0.34, Palette.CORAL_DARK)
+	U.ellipse(ci, Vector2(0, -0.32), 0.52, 0.32, Palette.CORAL)
+	U.rbox(ci, Rect2(-0.52, -0.22, 1.04, 0.16), 0.06, Palette.TEAL)
+	U.line(ci, Vector2(0, -0.6), Vector2(0, -0.78), Palette.STEEL_DARK, 0.06)
+	var a := t * 12.0
+	var v := Vector2(cos(a) * 0.5, sin(a) * 0.08)
+	U.line(ci, Vector2(0, -0.8) - v, Vector2(0, -0.8) + v, Palette.SUN_DEEP, 0.12)
+	U.ellipse(ci, Vector2(-0.18, 0.98), 0.17, 0.1, Palette.shade(Color("8FD8F0"), 0.5))
+	U.ellipse(ci, Vector2(0.18, 0.98), 0.17, 0.1, Palette.shade(Color("8FD8F0"), 0.5))
+
+
+## Family / group: two linked hearts.
+static func _family(ci: CanvasItem) -> void:
+	var h := _heart()
+	U.poly_xf(ci, h, Vector2(-0.24, -0.1), 0.0, Vector2(0.62, 0.62), Palette.shade(Color("2FA8E0"), 0.3))
+	U.poly_xf(ci, h, Vector2(-0.26, -0.14), 0.0, Vector2(0.62, 0.62), Color("2FA8E0"))
+	U.poly_xf(ci, h, Vector2(0.28, 0.1), 0.0, Vector2(0.74, 0.74), Palette.shade(Color("FF5C8A"), 0.3))
+	U.poly_xf(ci, h, Vector2(0.26, 0.06), 0.0, Vector2(0.74, 0.74), Color("FF5C8A"))
+	_hl(ci, Vector2(0.0, -0.5), 0.14, 0.08, 0.5)
+
+
 static func _event(ci: CanvasItem) -> void:
 	# megaphone
 	var cone := PackedVector2Array([Vector2(-0.7, -0.22), Vector2(0.12, -0.7), Vector2(0.12, 0.7), Vector2(-0.7, 0.22)])
@@ -660,6 +881,23 @@ static func draw_room_icon(ci: CanvasItem, room_id: StringName, center: Vector2,
 			for p in [Vector2(-0.28, -0.28), Vector2(0.28, -0.28), Vector2(0, 0), Vector2(-0.28, 0.28), Vector2(0.28, 0.28)]:
 				U.circ(ci, p, 0.11, bc)
 			U.xf_load(ci, prev)
+		&"kids_club":
+			# three stacked balls on a little slide
+			for p in [Vector2(-0.36, 0.3), Vector2(0.14, 0.3), Vector2(-0.11, -0.12)]:
+				U.circ(ci, p, 0.26, g)
+			U.circ(ci, Vector2(-0.18, -0.2), 0.07, bc)
+			U.circ(ci, Vector2(0.06, 0.22), 0.07, bc)
+			U.circ(ci, Vector2(-0.44, 0.22), 0.07, bc)
+			U.line(ci, Vector2(0.46, -0.5), Vector2(0.66, 0.1), g, 0.13)
+			U.line(ci, Vector2(0.46, -0.5), Vector2(0.62, -0.62), g, 0.1)
+			U.line(ci, Vector2(0.55, 0.32), Vector2(0.75, 0.6), g, 0.1)
+		&"crew_quarters":
+			U.rbox(ci, Rect2(-0.66, -0.62, 0.14, 1.24), 0.05, g)
+			U.rbox(ci, Rect2(0.52, -0.62, 0.14, 1.24), 0.05, g)
+			U.rbox(ci, Rect2(-0.62, -0.28, 1.24, 0.2), 0.06, g)
+			U.rbox(ci, Rect2(-0.62, 0.22, 1.24, 0.2), 0.06, g)
+			U.rbox(ci, Rect2(-0.5, -0.46, 0.34, 0.16), 0.07, g)
+			U.rbox(ci, Rect2(-0.5, 0.04, 0.34, 0.16), 0.07, g)
 		&"stairs":
 			U.poly(ci, PackedVector2Array([Vector2(-0.65, 0.55), Vector2(-0.65, 0.2), Vector2(-0.25, 0.2), Vector2(-0.25, -0.15), Vector2(0.15, -0.15), Vector2(0.15, -0.5), Vector2(0.6, -0.5), Vector2(0.6, 0.55)]), g)
 		&"elevator":

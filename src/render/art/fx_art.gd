@@ -12,6 +12,8 @@ extends RefCounted
 ##   FxArt.draw_coin_pop(ci, pos, t01)                # coin hop
 ##   FxArt.draw_pop_ring(ci, pos, t01, color, r := 20) # badge "pop": expanding ring + flung dots (spill cleaned / fixed)
 ##   FxArt.draw_star_burst(ci, pos, t01, color)        # 7 little stars flung out with a bit of gravity
+##   FxArt.draw_vip_stamp(ci, pos, t01, title, grade, sub, color, sc := 1.0)  # a VIP's verdict: rising gold-edged plate ("Food critic" /
+##                                                     # "GREAT" / "+$250"), grade great | ok | bad picks the glyph
 
 const U := preload("res://src/render/art/art_util.gd")
 
@@ -82,6 +84,17 @@ static func draw_hearts(ci: CanvasItem, pos: Vector2, t01: float) -> void:
 		IconArt.draw_icon(ci, &"heart", p, s * 2.0)
 
 
+## Seasick bubbles: a handful of seafoam bubbles rising and popping, with a small swirl.
+static func draw_queasy(ci: CanvasItem, pos: Vector2, t01: float) -> void:
+	var k := clampf(t01, 0.0, 1.0)
+	for i in range(5):
+		var kk := clampf(k * 1.25 - float(i) * 0.08, 0.0, 1.0)
+		var p := pos + Vector2((float(i) - 2.0) * 5.0 + sin(kk * 6.0 + float(i) * 1.7) * 3.0, -kk * 26.0)
+		var a := 1.0 - kk
+		U.circ(ci, p, 1.8 + 2.4 * sin(kk * PI) + float(i % 2), Color(0.7, 0.98, 0.9, 0.85 * a))
+		U.ring(ci, p, 2.6 + 3.0 * sin(kk * PI) + float(i % 2), Color(0.3, 0.7, 0.65, 0.55 * a), 1.0)
+
+
 static func draw_stars(ci: CanvasItem, pos: Vector2, t01: float) -> void:
 	var k := clampf(t01, 0.0, 1.0)
 	for i in range(4):
@@ -133,3 +146,53 @@ static func draw_star_burst(ci: CanvasItem, pos: Vector2, t01: float, color: Col
 		var rot := k * 5.0 + float(i)
 		U.star(ci, p, sr + 1.4, edge, rot)
 		U.star(ci, p, sr, Color(color.r, color.g, color.b, 1.0 - k * k), rot)
+
+
+## A VIP's verdict as a small plate that pops in, floats up and fades. `pos` = bottom centre of the plate at its start.
+static func draw_vip_stamp(ci: CanvasItem, pos: Vector2, t01: float, title: String, grade: StringName, sub: String, color: Color, sc: float = 1.0) -> void:
+	var k := clampf(t01, 0.0, 1.0)
+	var pop := U.ease_out_back(clampf(k / 0.12, 0.0, 1.0))
+	var a := 1.0 if k < 0.72 else 1.0 - (k - 0.72) / 0.28
+	var rise := U.smooth(clampf(k * 1.3, 0.0, 1.0)) * 26.0
+	var f := U.font_bold()
+	var grade_txt := VipSim.grade_label(grade).to_upper()
+	var tw := maxf(f.get_string_size(grade_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 19).x, f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x)
+	var w := tw + 52.0
+	var h := 46.0 if sub == "" else 72.0   # (the money line needs its own padding above the bottom edge)
+	var c := pos + Vector2(0.0, -(rise + h * 0.5) * sc)
+	var old := U.alpha
+	U.alpha = old * a
+	U.xf(ci, c, 0.0, Vector2(pop * sc, pop * sc))
+	var r := Rect2(-w * 0.5, -h * 0.5, w, h)
+	U.rr(ci, Rect2(r.position + Vector2(0, 3.0), r.size), 13.0, Color(0.1, 0.14, 0.26, 0.3))
+	U.rr(ci, r, 13.0, Color("FFF8EC"))
+	U.rr_outline(ci, r, 13.0, color, 3.0)
+	U.rr_ex(ci, Rect2(r.position + Vector2(3, 3), Vector2(r.size.x - 6.0, 4.0)), 10.0, 10.0, 0.0, 0.0, Color(color.r, color.g, color.b, 0.9))
+	# glyph: gold star (great), thumbs-level dot face (ok), grumpy cloud (bad)
+	var gp := Vector2(r.position.x + 21.0, 0.0)
+	match grade:
+		&"great":
+			U.circ(ci, gp, 13.0, Color("FFF1B8"))
+			U.star(ci, gp, 11.0, Palette.VIP_GOLD_DARK, 0.0)
+			U.star(ci, gp, 8.4, Palette.VIP_GOLD, 0.0)
+		&"bad":
+			U.circ(ci, gp, 12.5, Color("FFD9DC"))
+			U.circ(ci, gp + Vector2(-4, -2), 1.8, Palette.INK)
+			U.circ(ci, gp + Vector2(4, -2), 1.8, Palette.INK)
+			U.line(ci, gp + Vector2(-6.5, -6.0), gp + Vector2(-2.0, -4.0), Palette.INK, 1.8)
+			U.line(ci, gp + Vector2(6.5, -6.0), gp + Vector2(2.0, -4.0), Palette.INK, 1.8)
+			U.arc(ci, gp + Vector2(0, 7.5), 4.6, PI + 0.5, TAU - 0.5, Palette.CORAL_DARK, 2.0, 8)
+		_:
+			U.circ(ci, gp, 12.5, Color("E7EEF8"))
+			U.circ(ci, gp + Vector2(-4, -2), 1.8, Palette.INK)
+			U.circ(ci, gp + Vector2(4, -2), 1.8, Palette.INK)
+			U.line(ci, gp + Vector2(-4.5, 5.0), gp + Vector2(4.5, 5.0), Palette.INK, 2.0)
+	var tx := r.position.x + 40.0
+	var title_col := Color(color.r, color.g, color.b, 1.0).darkened(0.1)
+	U.text(ci, title, Vector2(tx, -h * 0.5 + 22.0), 12, UITheme.TEXT_MUTED, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f)
+	U.text(ci, grade_txt, Vector2(tx, -h * 0.5 + 41.0), 19, title_col, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f)
+	if sub != "":
+		var money_col: Color = Palette.MINT_DARK if sub.begins_with("+") else Palette.CORAL_DARK
+		U.text(ci, sub, Vector2(tx, -h * 0.5 + 58.0), 13, money_col, HORIZONTAL_ALIGNMENT_LEFT, -1.0, f)
+	U.xf_end(ci)
+	U.alpha = old

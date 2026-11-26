@@ -2,7 +2,7 @@ class_name BeanPortrait
 extends Control
 ## Round portrait of a guest or staff bean for roster cards / manifest.
 ##   prop: StringName (sun_hat|headband|glasses_3d|headphones), body_color: Color,
-##   staff_role: StringName ("" guest | janitor | mechanic), mood: StringName ("" | happy|ok|unhappy|angry|sick|need_*),
+##   staff_role: StringName ("" guest | janitor | mechanic | medic | entertainer | chef | warden), mood: StringName ("" | happy|ok|unhappy|angry|sick|need_*),
 ##   plate_color: Color, portrait_size: float (px, square), selected: bool (coral ring).
 
 const U := preload("res://src/render/art/art_util.gd")

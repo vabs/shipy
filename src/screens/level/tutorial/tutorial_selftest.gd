@@ -494,6 +494,19 @@ func _test_hints() -> void:
 		var have: bool = ids.has(want) or screen.hint_store.has(want)
 		_check(have, "signal -> hint '%s' (queued or already shown)" % want)
 	hd._queue.clear()
+	# v2 signals: VIP aboard, tired crew, storm, port stop + refit
+	w.vip_boarded.emit(1, &"critic")
+	w.staff_tired.emit(1)
+	w.event_started.emit(&"storm")
+	w.port_stop_started.emit("Santorini")
+	w.port_stop_ready.emit()
+	var ids2: Array[StringName] = []
+	for q in hd._queue:
+		ids2.append(q["id"])
+	var wanted_tired: StringName = &"tired" if w.has_room_type(&"crew_quarters") else &"tired_none"
+	for want in [&"vip_critic", wanted_tired, &"event_storm", &"portstop", &"refit"]:
+		_check(ids2.has(want) or screen.hint_store.has(want), "v2 signal -> hint '%s'" % want)
+	hd._queue.clear()
 	# store: persistence format
 	var tmp := HintStore.new()
 	tmp.path = "user://hints_selftest.json"

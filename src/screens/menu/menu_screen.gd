@@ -295,17 +295,40 @@ func _fake_result(stars: int, mutiny: bool, level: LevelDef) -> Dictionary:
 	if mutiny:
 		ledger = {"tickets": 900, "spending": 300, "upkeep": 1500, "wages": 380, "hires": 60}
 	var profit: int = int(ledger["tickets"]) + int(ledger["spending"]) - int(ledger["upkeep"]) - int(ledger["hires"])
+	var money_start: int = 1200
+	var money_end: int = money_start + profit
 	return {
 		"stars": 0 if mutiny else stars, "goals": goals, "rating": rating, "profit": profit,
+		"money_start": money_start, "money_end": money_end, "payout": 0 if mutiny else maxi(0, money_end),
+		"report": _fake_report(),
 		"ledger": ledger,
 		"guests_total": total, "guests_lost": lost, "served": total - lost if not mutiny else 11, "mutiny": mutiny,
 		"level_id": String(level.id) if level != null else "med_3",
 	}
 
 
+## A small made-up VoyageTelemetry report so the preview shows the report / heatmap buttons.
+func _fake_report() -> Dictionary:
+	var rooms: Array[Dictionary] = []
+	var specs: Array = [
+		[&"buffet", "Buffet", 2, 2.6, 5, &"overloaded", 0.8], [&"pool", "Pool", 3, 0.2, 0, &"unreliable", 0.5],
+		[&"arcade", "Arcade", 1, 0.0, 1, &"idle", 0.05], [&"cabin", "Cabin", 1, 0.0, 9, &"ok", 0.2],
+		[&"toilets", "Toilets", 1, 0.6, 24, &"ok", 0.5],
+	]
+	for i in range(specs.size()):
+		var sp: Array = specs[i]
+		rooms.append({"uid": i + 1, "id": sp[0], "name": sp[1], "deck": sp[2], "x": i * 4, "util": sp[6], "avg_queue": sp[3], "broken_frac": 0.3 if sp[5] == &"unreliable" else 0.0,
+				"patience_outs": sp[4], "uses": 40 if sp[5] == &"ok" else 6, "tag": sp[5]})
+	var curve: Array[float] = []
+	for i in range(37):
+		curve.append(62.0 + 14.0 * sin(float(i) * 0.3) - float(i) * 0.2)
+	return {"rooms": rooms, "tips": ["Buffet: the queue averaged 2.6 guests. Add another or upgrade it to serve more at once."], "rating_curve": curve,
+			"grids": {}, "decks": 4, "width": 24, "samples": 180, "duration": 180.0, "homeless": 0}
+
+
 func _fake_unlocks(stars: int, mutiny: bool, _level: LevelDef) -> Dictionary:
 	var out: Dictionary = {"new_stars": stars, "total_stars": 12, "best_stars": stars, "newly_unlocked_levels": [], "newly_unlocked_destinations": [],
-			"newly_unlocked_rooms": [], "newly_unlocked_features": []}
+			"newly_unlocked_rooms": [], "newly_unlocked_features": [], "funds_earned": 0 if mutiny else 640 * stars, "funds_total": 3200, "best_payout": 0 if mutiny else 1900}
 	if mutiny or int(_params.get("unlocks", "1")) == 0:
 		return out
 	if stars >= 1:

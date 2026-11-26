@@ -6,7 +6,7 @@ func _draw() -> void:
 	if _done:
 		return
 	_done = true
-	var ids: Array[StringName] = [&"cabin", &"buffet", &"toilets", &"bar", &"pool", &"deck_chairs", &"cinema", &"gym", &"arcade", &"restaurant", &"medbay", &"sauna", &"ice_rink", &"casino", &"generator", &"water_tank", &"stairs", &"elevator"]
+	var ids: Array[StringName] = [&"cabin", &"buffet", &"toilets", &"bar", &"pool", &"deck_chairs", &"cinema", &"gym", &"arcade", &"kids_club", &"restaurant", &"medbay", &"sauna", &"ice_rink", &"casino", &"crew_quarters", &"generator", &"water_tank", &"stairs", &"elevator"]
 	var total := 0.0
 	for id in ids:
 		var wc := RoomArt.default_width(id)

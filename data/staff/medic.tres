@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="StaffDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/staff_def.gd" id="1_uhcx4"]
+
+[resource]
+script = ExtResource("1_uhcx4")
+id = &"medic"
+display_name = "Medic"
+handles = &"sick"
+wage = 70
+work_time = 3.0
+unlock_level = 3
+description = "Treats sick guests on the spot"

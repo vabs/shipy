@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EventDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/event_def.gd" id="1_fpy3q"]
+
+[resource]
+script = ExtResource("1_fpy3q")
+id = &"storm"
+display_name = "Storm"
+description = "Rough seas! The top deck is closed and tummies are turning."
+duration = 45.0
+icon = &"storm"
+min_campaign_index = 8
+storm = true
+top_deck_closed = true
+seasick_chance = 0.06
+mess_mult_all = 1.5

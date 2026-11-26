@@ -14,8 +14,18 @@ const NAMES: Array[StringName] = [
 	&"ui_click", &"ui_hover", &"place", &"coin", &"error_buzz", &"sell", &"upgrade", &"wave_board",
 	&"hire", &"alert", &"mess_splat", &"clean", &"breakdown", &"repair_done", &"slip", &"sick",
 	&"cure", &"ghost", &"banish", &"event_horn", &"star_1", &"star_2", &"star_3", &"mutiny_warn",
-	&"set_sail_horn",
+	&"set_sail_horn", &"vip_arrive", &"vip_great", &"vip_ok", &"vip_bad",
+	&"dock_horn", &"thunder", &"rain",
 ]
+
+## Sounds that are seamless loops (the storm's rain bed): AudioManager plays them looped through `set_ambience`, no edge fades.
+const LOOPING: Array[StringName] = [&"rain"]
+const RAIN_SECONDS: float = 4.0
+
+
+## Frames of a looping sound (0 = not a loop).
+static func loop_frames(name: StringName) -> int:
+	return int(RAIN_SECONDS * float(SR)) if name == &"rain" else 0
 
 ## Target loudness per sound as RMS in dBFS (peaks are soft-limited to -1.5 dBFS). UI sounds sit
 ## quiet, jingles and horns louder.
@@ -25,6 +35,8 @@ const LOUDNESS_DB: Dictionary = {
 	&"mess_splat": -20.0, &"clean": -22.0, &"breakdown": -19.0, &"repair_done": -19.0, &"slip": -19.0,
 	&"sick": -21.0, &"cure": -19.0, &"ghost": -24.0, &"banish": -19.0, &"event_horn": -17.0,
 	&"star_1": -19.0, &"star_2": -19.0, &"star_3": -18.0, &"mutiny_warn": -20.0, &"set_sail_horn": -16.0,
+	&"vip_arrive": -18.0, &"vip_great": -18.0, &"vip_ok": -21.0, &"vip_bad": -19.0,
+	&"dock_horn": -16.0, &"thunder": -15.0, &"rain": -27.0,
 }
 
 
@@ -58,9 +70,19 @@ static func render(name: StringName) -> PackedFloat32Array:
 		&"wave_board": b = _wave_board()
 		&"error_buzz": b = _error_buzz()
 		&"hire": b = _hire(rng)
+		&"vip_arrive": b = _vip_arrive()
+		&"vip_great": b = _vip_great()
+		&"vip_ok": b = _vip_ok()
+		&"vip_bad": b = _vip_bad(rng)
+		&"dock_horn": b = _dock_horn()
+		&"thunder": b = _thunder(rng)
+		&"rain": b = _rain(rng)
 		_:
 			return PackedFloat32Array()
-	SU.finish_sfx(b, SR, float(LOUDNESS_DB.get(name, -20.0)))
+	if name in LOOPING:
+		SU.fit_loudness(b, float(LOUDNESS_DB.get(name, -26.0)))   # no edge fades: it has to loop seamlessly
+	else:
+		SU.finish_sfx(b, SR, float(LOUDNESS_DB.get(name, -20.0)))
 	return b
 
 
@@ -343,6 +365,62 @@ static func _star_3() -> PackedFloat32Array:
 	return SU.with_reverb(b, SR, 0.28, 0.6, 0.8, 0.4)
 
 
+# ---------------------------------------------------------------------------------------------
+# VIP guests (docs/SPEC.md §13.5)
+# ---------------------------------------------------------------------------------------------
+
+## A VIP steps aboard: a little brass "ta-da" under a glittering bell run.
+static func _vip_arrive() -> PackedFloat32Array:
+	var b := _mk(1.3)
+	_put(b, _horn(392.0, 0.16, 0.0, 0.0, 1800.0), 0.0, 0.7)
+	_put(b, _horn(523.25, 0.16, 0.0, 0.0, 1800.0), 0.14, 0.75)
+	var chord := _horn(659.25, 0.6, 5.0, 0.008, 1800.0)
+	SU.mix_into(chord, _horn(523.25, 0.6, 5.0, 0.008, 1800.0), 0, 0.6)
+	_put(b, chord, 0.3, 0.9)
+	var notes: Array[float] = [1319.0, 1568.0, 2093.0, 2637.0]
+	for i in notes.size():
+		_put(b, _bell(notes[i], 0.7, 5.0), 0.36 + i * 0.07, 0.32)
+	return SU.with_reverb(b, SR, 0.26, 0.6, 0.78, 0.4)
+
+
+## Great review: a bright rising arpeggio ending on a shimmering chord.
+static func _vip_great() -> PackedFloat32Array:
+	var b := _mk(1.7)
+	var notes: Array[float] = [523.25, 659.25, 783.99, 1046.5]
+	for i in notes.size():
+		_put(b, _bell(notes[i], 0.8, 4.5), i * 0.07, 0.8)
+	var t: float = 0.34
+	_put(b, _bell(1046.5, 1.1, 2.8), t, 0.55)
+	_put(b, _bell(1318.5, 1.1, 2.8), t, 0.45)
+	_put(b, _bell(1568.0, 1.1, 2.8), t, 0.42)
+	_put(b, _bell(2093.0, 0.9, 3.5), t + 0.04, 0.24)
+	_put(b, _pure(3136.0, 0.6, 8.0), t + 0.09, 0.1)
+	_put(b, _mallet(2637.0, 0.3, 14.0), t + 0.2, 0.2)
+	return SU.with_reverb(b, SR, 0.3, 0.7, 0.8, 0.4)
+
+
+## Fine, unremarkable review: two polite notes.
+static func _vip_ok() -> PackedFloat32Array:
+	var b := _mk(0.8)
+	_put(b, _bell(659.25, 0.5, 6.0), 0.0, 0.8)
+	_put(b, _bell(587.33, 0.6, 5.5), 0.16, 0.9)
+	return SU.with_reverb(b, SR, 0.2, 0.4, 0.72, 0.4)
+
+
+## Bad review: a sagging "wah wah" and a dull thud.
+static func _vip_bad(rng: RandomNumberGenerator) -> PackedFloat32Array:
+	var b := _mk(1.1)
+	var a := SU.sweep(SR, 0.3, 311.0, 277.0, SU.H_BRASS, 0.02, 2.5, 0.06, 6.0, 0.02, 0.05)
+	SU.lowpass(a, SR, 1100.0)
+	var c := SU.sweep(SR, 0.55, 277.0, 196.0, SU.H_BRASS, 0.02, 1.8, 0.1, 6.0, 0.03, 0.05)
+	SU.lowpass(c, SR, 1000.0)
+	_put(b, a, 0.0, 0.9)
+	_put(b, c, 0.32, 1.0)
+	_put(b, SU.sweep(SR, 0.2, 140.0, 60.0, SU.H_SOFT, 0.001, 18.0, 0.1), 0.82, 0.7)
+	_put(b, SU.noise(SR, 0.08, rng, 800.0, 300.0, 100.0, 40.0), 0.82, 0.3)
+	return SU.with_reverb(b, SR, 0.16, 0.3, 0.72, 0.5)
+
+
 static func _mutiny_warn() -> PackedFloat32Array:
 	var b := _mk(1.0)
 	var freqs: Array[float] = [220.0, 196.0, 175.0]
@@ -352,3 +430,46 @@ static func _mutiny_warn() -> PackedFloat32Array:
 		_put(b, pulse, i * 0.27, 1.0)
 		_put(b, _pure(freqs[i] * 4.0, 0.12, 22.0), i * 0.27, 0.12)
 	return SU.with_reverb(b, SR, 0.16, 0.3, 0.74, 0.5)
+
+
+# ---------------------------------------------------------------------------------------------
+# Storm and port stop (docs/SPEC.md §13.7 / §13.8)
+# ---------------------------------------------------------------------------------------------
+## Docking: two long, slow ship-horn blasts (lower and longer than the event horn, rising a fourth).
+static func _dock_horn() -> PackedFloat32Array:
+	var b := _mk(2.6)
+	var a := _horn(130.8, 0.9, 0.0, 0.0, 1300.0)
+	SU.mix_into(a, _horn(196.0, 0.9, 0.0, 0.0, 1300.0), 0, 0.6)
+	SU.fade_in(a, int(0.06 * SR))
+	SU.fade_out(a, int(0.25 * SR))
+	_put(b, a, 0.0, 0.9)
+	var c := _horn(174.6, 1.1, 4.5, 0.008, 1300.0)
+	SU.mix_into(c, _horn(261.6, 1.1, 4.5, 0.008, 1300.0), 0, 0.55)
+	SU.fade_in(c, int(0.06 * SR))
+	SU.fade_out(c, int(0.4 * SR))
+	_put(b, c, 1.1, 1.0)
+	return SU.with_reverb(b, SR, 0.3, 0.8, 0.8, 0.4)
+
+
+## Thunder: a short bright crack, then a deep rumble that swells and rolls away.
+static func _thunder(rng: RandomNumberGenerator) -> PackedFloat32Array:
+	var b := _mk(3.6)
+	_put(b, SU.noise(SR, 0.2, rng, 5500.0, 800.0, 500.0, 24.0, 0.001, 0.06), 0.0, 0.55)
+	_put(b, SU.noise(SR, 3.0, rng, 420.0, 80.0, 0.0, 1.3, 0.18, 0.5), 0.1, 1.0)
+	_put(b, SU.noise(SR, 2.5, rng, 260.0, 60.0, 0.0, 1.7, 0.55, 0.5), 0.45, 0.8)
+	_put(b, SU.noise(SR, 1.6, rng, 700.0, 120.0, 40.0, 2.4, 0.9, 0.3), 1.2, 0.5)
+	SU.lowpass(b, SR, 1800.0)
+	return b
+
+
+## Rain bed: a seamless 4 s loop of hissing filtered noise with soft pitter-patter.
+static func _rain(rng: RandomNumberGenerator) -> PackedFloat32Array:
+	var n: int = int(RAIN_SECONDS * SR)
+	var xf: int = int(0.5 * SR)
+	var total := SU.buf(n + xf)
+	SU.mix_into(total, SU.noise(SR, RAIN_SECONDS + 0.5, rng, 6500.0, 6500.0, 1400.0, 0.0, 0.0, 0.0), 0, 1.0)
+	SU.mix_into(total, SU.noise(SR, RAIN_SECONDS + 0.5, rng, 1800.0, 1800.0, 300.0, 0.0, 0.0, 0.0), 0, 0.35)
+	for i in 150:
+		var t: float = rng.randf() * RAIN_SECONDS
+		SU.mix_into(total, _tick(rng, rng.randf_range(2500.0, 6500.0), 0.012), int(t * SR), rng.randf_range(0.25, 0.6))
+	return SU.loopify(total, n, xf)

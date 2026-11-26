@@ -48,6 +48,8 @@ var crew_panel: PortCrewPanel
 var manifest_panel: PortManifestPanel
 
 var _port: PortState
+var _tab_row: HBoxContainer
+var _refit: bool = false
 var _tab_buttons: Dictionary = {}
 var _tab_pages: Dictionary = {}
 var _cards: Dictionary = {}          # room id -> PortRoomCard
@@ -148,6 +150,7 @@ func _glyph_button(kind: StringName, tip: String, px: float) -> Button:
 
 func _build_tab_row() -> Control:
 	var row := UIKit.hbox(6)
+	_tab_row = row
 	back_button = UIKit.ghost_button("< Map")
 	back_button.tooltip_text = "Back to the map"
 	back_button.pressed.connect(func() -> void: back_pressed.emit())
@@ -186,6 +189,41 @@ func _build_tab_row() -> Control:
 	_chevron.pressed.connect(func() -> void: set_collapsed(not collapsed))
 	row.add_child(_chevron)
 	return row
+
+
+## Quick refit at a port stop (docs/SPEC.md §13.8): no map / undo / manifest, a "Quick refit - <port>" title in their place, "Cast off!"
+## instead of "Set Sail!", the budget chip says it is the voyage money.
+func configure_refit(stop_name: String) -> void:
+	_refit = true
+	back_button.visible = false
+	undo_button.visible = false
+	var mb: Button = _tab_buttons.get(&"manifest")
+	if mb != null:
+		mb.visible = false
+	var title := PanelContainer.new()
+	title.theme_type_variation = &"PillPanel"
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hb := UIKit.hbox(8)
+	var iv := IconView.new()
+	iv.icon = &"event"
+	iv.icon_size = 28.0
+	hb.add_child(iv)
+	var l1 := Label.new()
+	l1.theme_type_variation = &"PillLabel"
+	l1.text = "Quick refit"
+	hb.add_child(l1)
+	var l2 := Label.new()
+	l2.theme_type_variation = &"PillLabel"
+	l2.add_theme_color_override("font_color", Palette.SUN)
+	l2.text = stop_name
+	hb.add_child(l2)
+	title.add_child(hb)
+	_tab_row.add_child(title)
+	_tab_row.move_child(title, 0)
+	sail_button.text = "Cast off!"
+	sail_button.tooltip_text = "Leave %s and sail on: new guests come aboard" % stop_name
+	_budget.tooltip_text = "Voyage money"
+	select_tab(&"rest", false)
 
 
 ## Narrower side padding than the theme's tab pill so eight tabs + meters fit a 1920 bar.
@@ -369,6 +407,8 @@ func select_tab(id: StringName, emit: bool = true) -> void:
 func cycle_tab(dir: int) -> void:
 	var ids: Array = []
 	for t in TABS:
+		if _refit and t["id"] == &"manifest":
+			continue
 		ids.append(t["id"])
 	var i: int = ids.find(current_tab)
 	select_tab(ids[wrapi(i + dir, 0, ids.size())])

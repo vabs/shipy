@@ -10,6 +10,7 @@ extends Node2D
 ##   clear_room_state(uid: int)
 ##   var bob_enabled: bool = true     # whole ship bobs +-3 px / tilts +-0.5 deg at ~0.22 Hz
 ##   var anim_speed: float = 1.0      # 0 freezes room/superstructure animation (pause), 1 normal, 2/3 faster
+##   var weather: float = 0.0         # 0..1 storm (SimWorld.weather_intensity): the bob grows x3 and the tilt x4 at 1, a little quicker
 ##   get_layer(name: StringName) -> Node2D   # "rooms_back" (mine) "entities" "rooms_front" (mine) "overlay" "fx"
 ##       -> children of these inherit the bob; use SimConst.to_px() ship-local coordinates.
 ##   mouse_local() -> Vector2         # mouse position in ship-local coordinates (same as layer.get_local_mouse_position())
@@ -26,6 +27,12 @@ const CELL_W: float = 40.0
 
 var bob_enabled: bool = true
 var anim_speed: float = 1.0
+var weather: float = 0.0:
+	set(v):
+		if absf(v - weather) > 0.004:
+			weather = v
+			if _sway != null:
+				_apply_tint()
 var width_cells: int = 24
 var decks: int = 4
 var gangway_deck: int = 1
@@ -42,6 +49,7 @@ var _fronts: Dictionary = {}      # uid -> _RoomNode (front)
 var _room_data: Dictionary = {}   # uid -> room Dictionary
 var _anim_t: float = 0.0
 var _bob_t: float = 0.0
+var _bob_ph: float = 0.0
 var _frame: int = 0
 var _vis_margin: float = 80.0
 
@@ -201,10 +209,12 @@ func set_destination(p_destination: StringName) -> void:
 
 ## Subtle destination lighting on the whole ship (cool in the arctic, dusky in the underworld).
 func _apply_tint() -> void:
+	var c := Color(1, 1, 1)
 	match destination:
-		&"arctic": _sway.modulate = Color(0.95, 0.98, 1.0)
-		&"underworld": _sway.modulate = Color(0.9, 0.86, 1.0)
-		_: _sway.modulate = Color(1, 1, 1)
+		&"arctic": c = Color(0.95, 0.98, 1.0)
+		&"underworld": c = Color(0.9, 0.86, 1.0)
+	# storm light: the whole ship goes a little dim and blue
+	_sway.modulate = c * Color(1, 1, 1).lerp(Color(0.78, 0.83, 0.95), clampf(weather, 0.0, 1.0))
 
 
 func set_rooms(rooms: Array) -> void:
@@ -264,7 +274,7 @@ static func _has_static_front(rid: StringName) -> bool:
 
 
 static func _has_front(rid: StringName) -> bool:
-	return rid in [&"cabin", &"toilets", &"bar", &"pool", &"cinema", &"restaurant", &"sauna", &"ice_rink"]
+	return rid in [&"cabin", &"toilets", &"bar", &"pool", &"cinema", &"restaurant", &"sauna", &"ice_rink", &"crew_quarters"]
 
 
 func set_room_state(uid: int, state: Dictionary) -> void:
@@ -341,13 +351,14 @@ func _visible_local_rect() -> Rect2:
 
 func _process(delta: float) -> void:
 	_bob_t += delta
+	_bob_ph += delta * TAU * 0.22 * (1.0 + 0.45 * weather)
 	_anim_t += delta * anim_speed
 	_frame += 1
 	# bob + tilt about the waterline centre
 	if bob_enabled:
-		var ph := _bob_t * TAU * 0.22
-		var dy := sin(ph) * 3.0
-		var rot := sin(ph + 0.9) * deg_to_rad(0.5)
+		var ph := _bob_ph
+		var dy := sin(ph) * 3.0 * (1.0 + 2.0 * weather) + sin(ph * 2.7 + 1.3) * 1.6 * weather
+		var rot := sin(ph + 0.9) * deg_to_rad(0.5) * (1.0 + 3.0 * weather)
 		var pivot := Vector2(float(width_cells) * CELL_W * 0.5, ShipArt.WATERLINE_Y)
 		var rm := Transform2D(rot, Vector2.ZERO)
 		_sway.transform = Transform2D(rot, Vector2.ONE, 0.0, pivot - rm * pivot + Vector2(0.0, dy))

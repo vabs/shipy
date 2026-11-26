@@ -2,7 +2,9 @@ class_name VoyageInput
 extends Node
 ## Mouse interactions of the voyage (SPEC section 7):
 ##   left click mess = clean click   |  press-and-hold on a broken room = repair
-##   click crew (ship or roster) then click a problem = assign (dashed route preview, valid targets glow)
+##   click crew (ship or roster) then click a target = assign (dashed route preview, valid targets glow):
+##     janitor -> spill | mechanic -> broken room | medic -> sick guest | warden -> ghost |
+##     entertainer -> a room with a queue | chef -> buffet / restaurant | any crew -> crew quarters (rest)
 ##   click ghost = banish            |  click guest = pin its tooltip
 ##   right-click / Esc = cancel selection
 ## A full-rect PASS control (layer 6, under the HUD) receives the clicks so HUD panels block the world and
@@ -117,10 +119,12 @@ func _sync_renderer() -> void:
 	renderer.selected_staff_id = selected_staff_id
 	renderer.pinned_guest_id = pinned_guest_id
 	renderer.target_kind = &""
+	renderer.rest_targets = false
 	if selected_staff_id >= 0:
 		var s: StaffMember = world.staff_by_id(selected_staff_id)
 		if s != null:
-			renderer.target_kind = s.job_kind()
+			renderer.target_kind = s.job_kind() if s.job_kind() != &"" else s.aura_kind()
+			renderer.rest_targets = not world.room_sim.crew_rooms.is_empty() and s.energy < 100.0
 	if selected_staff_id < 0:
 		renderer.path_points = PackedVector2Array()
 
@@ -164,19 +168,41 @@ func _on_press(local: Vector2) -> void:
 				else:
 					select_staff(id)
 				return
-			if kind == &"mess" and s.job_kind() == &"mess":
+			var jk: StringName = s.job_kind()
+			if kind == &"mess" and jk == &"mess":
 				_assign(s, &"mess", id)
 				return
-			if kind == &"mess" and s.job_kind() != &"mess":
-				_hint("Mechanics fix rooms. Send a janitor to the spill!")
-			var target_room: int = id if kind == &"room" else renderer.room_at(local)
-			if s.job_kind() == &"repair" and target_room >= 0:
-				var rr: RoomRuntime = world.room_by_uid(target_room)
-				if rr != null and rr.broken and kind != &"ghost" and kind != &"mess":
-					_assign(s, &"repair", target_room)
+			if kind == &"ghost" and jk == &"ghost":
+				_assign(s, &"ghost", id)
+				return
+			if kind == &"guest" and jk == &"sick":
+				var sg: Guest = world.guest_by_id(id)
+				if sg != null and sg.is_ailing():
+					_assign(s, &"sick", id)
 					return
-			if s.job_kind() == &"mess" and target_room >= 0 and world.room_by_uid(target_room) != null and world.room_by_uid(target_room).broken:
-				_hint("Janitors clean spills. Send a mechanic to the broken room!")
+				_hint("Medics treat sick and seasick guests. Pick one with a green face!")
+			if kind == &"mess" and jk != &"mess":
+				_hint("Mechanics fix rooms. Send a janitor to the spill!" if jk == &"repair" else "%ss can't clean spills. Send a janitor!" % _role_name(s))
+			var target_room: int = id if kind == &"room" else renderer.room_at(local)
+			if target_room >= 0:
+				var rr: RoomRuntime = world.room_by_uid(target_room)
+				if rr != null:
+					if rr.is_crew_quarters():
+						_order_rest(s, rr)
+						return
+					if jk == &"repair" and rr.broken and kind != &"ghost" and kind != &"mess":
+						_assign(s, &"repair", target_room)
+						return
+					if s.aura_kind() == &"perform" and rr.def.is_service_room() and rr.def.id != &"cabin":
+						_assign(s, &"perform", target_room)
+						return
+					if s.aura_kind() == &"station":
+						if rr.def.category == &"food":
+							_assign(s, &"station", target_room)
+							return
+						_hint("Chefs work in the buffet or the restaurant.")
+					if jk == &"mess" and rr.broken:
+						_hint("Janitors clean spills. Send a mechanic to the broken room!")
 			if kind == &"ghost" or kind == &"mess":
 				pass  # fall through: banish / scrub even while a crew member is selected
 			elif kind == &"room" and world.room_by_uid(id) != null and world.room_by_uid(id).broken:
@@ -270,6 +296,21 @@ func _unpin() -> void:
 		pinned_guest_id = -1
 		_sync_renderer()
 		selection_changed.emit()
+
+
+func _role_name(s: StaffMember) -> String:
+	return s.def.display_name
+
+
+## Sends crew to a crew quarters bunk, with a helpful hint when it can't.
+func _order_rest(s: StaffMember, q: RoomRuntime) -> void:
+	if s.energy >= 100.0:
+		_hint("%s is fully rested." % _role_name(s))
+		return
+	if q.free_bunks() <= 0 and s.rest_uid != q.uid:
+		_hint("All bunks are taken.")
+		return
+	_assign(s, &"rest", q.uid)
 
 
 func _assign(s: StaffMember, kind: StringName, target_id: int) -> void:
@@ -376,16 +417,33 @@ func _update_path(delta: float) -> void:
 		return
 	var td: int = -1
 	var tx: float = 0.0
-	if hover_kind == &"mess" and s.job_kind() == &"mess":
-		var m: Mess = world.mess_by_id(hover_id)
-		if m != null:
-			td = m.deck
-			tx = m.x
-	elif hover_kind == &"room" and s.job_kind() == &"repair":
-		var r: RoomRuntime = world.room_by_uid(hover_id)
-		if r != null and r.broken:
-			td = r.deck
-			tx = r.door_x
+	var jk: StringName = s.job_kind()
+	match hover_kind:
+		&"mess":
+			var m: Mess = world.mess_by_id(hover_id)
+			if m != null and jk == &"mess":
+				td = m.deck
+				tx = m.x
+		&"guest":
+			var g: Guest = world.guest_by_id(hover_id)
+			if g != null and g.is_ailing() and jk == &"sick":
+				td = g.deck
+				tx = g.x
+		&"ghost":
+			var gh: Ghost = world.ghost_by_id(hover_id)
+			if gh != null and jk == &"ghost":
+				td = gh.deck
+				tx = clampf(gh.x, 0.5, float(world.grid.hull.width) - 0.5)
+		&"room":
+			var r: RoomRuntime = world.room_by_uid(hover_id)
+			if r != null:
+				var ok: bool = r.is_crew_quarters() and s.energy < 100.0 and r.free_bunks() > 0
+				ok = ok or (jk == &"repair" and r.broken)
+				ok = ok or (s.aura_kind() == &"perform" and r.def.is_service_room() and r.def.id != &"cabin")
+				ok = ok or (s.aura_kind() == &"station" and r.def.category == &"food")
+				if ok:
+					td = r.deck
+					tx = r.door_x
 	_path_timer -= delta
 	if td < 0:
 		if _path_key != "":

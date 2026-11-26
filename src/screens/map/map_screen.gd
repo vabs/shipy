@@ -5,7 +5,8 @@ extends Control
 ## params: dest (med|arctic|underworld) preselects a destination, level (level id) preselects its destination
 ## and highlights that card. Defaults to the destination of the next unfinished level.
 ## Keyboard / controller: left / right browse destinations, Down jumps to the level cards, Esc goes back.
-## Dev: --scene=map [--dest=arctic] [--unlock-all]
+## The top bar's Shipyard button (with the company funds badge) opens the perk shop.
+## Dev: --scene=map [--dest=arctic] [--unlock-all] [--save=/abs/save.json]
 
 const DESTS: Array[StringName] = [&"med", &"arctic", &"underworld"]
 const ACCENTS: Dictionary = {
@@ -28,6 +29,9 @@ var _room_label: Label
 var _lock_banner: PanelContainer
 var _lock_label: Label
 var _star_counter: StarCounter
+var _yard_btn: Button
+var _yard_funds: Label
+var _yard_dot: Control
 var _selected: StringName = &""
 var _recommended: StringName = &""
 var _focus_level: StringName = &""
@@ -104,10 +108,103 @@ func _build_top() -> PanelContainer:
 	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(title)
 	h.add_child(UIKit.h_spacer())
+	h.add_child(_build_shipyard_button())
 	_star_counter = StarCounter.new()
 	_star_counter.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(_star_counter)
 	return bar
+
+
+## "Shipyard" button with the company funds as a badge (and a pulsing dot when an upgrade is affordable).
+func _build_shipyard_button() -> Button:
+	var b := UIKit.sun_button("")
+	b.custom_minimum_size = Vector2(318, 56)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.name = "ShipyardButton"
+	b.tooltip_text = "Spend company funds on permanent perks"
+	OvUtil.focusable(b, Palette.CORAL, 14)
+	b.pressed.connect(func() -> void: _go("shipyard"))
+	var hb := UIKit.hbox(8)
+	hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hb.offset_left = 16.0
+	hb.offset_right = -8.0
+	hb.offset_bottom = -4.0
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ic := PerkIcon.new(&"anchor", 34.0)
+	ic.badge = false
+	ic.glyph_color = Palette.NAVY
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hb.add_child(ic)
+	var tl := Label.new()
+	tl.text = "Shipyard"
+	tl.add_theme_font_override("font", UITheme.font_bold())
+	tl.add_theme_font_size_override("font_size", 24)
+	tl.add_theme_color_override("font_color", UITheme.TEXT_INK)
+	tl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hb.add_child(tl)
+	var badge := PanelContainer.new()
+	badge.theme_type_variation = &"PillPanel"
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var bh := UIKit.hbox(6)
+	bh.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(bh)
+	var coin := GlyphView.new(&"coin", 24.0)
+	bh.add_child(coin)
+	_yard_funds = Label.new()
+	_yard_funds.theme_type_variation = &"PillLabel"
+	_yard_funds.add_theme_font_size_override("font_size", 20)
+	_yard_funds.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bh.add_child(_yard_funds)
+	hb.add_child(badge)
+	b.add_child(hb)
+	_yard_dot = _YardDot.new()
+	_yard_dot.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_yard_dot.offset_left = -20.0
+	_yard_dot.offset_right = 8.0
+	_yard_dot.offset_top = -8.0
+	_yard_dot.offset_bottom = 20.0
+	b.add_child(_yard_dot)
+	_yard_btn = b
+	_refresh_yard()
+	return b
+
+
+func _refresh_yard() -> void:
+	if _yard_funds == null:
+		return
+	var funds: int = SaveManager.funds()
+	_yard_funds.text = OvUtil.money(funds)
+	var cheapest: int = -1
+	for id in Perks.IDS:
+		var lv: int = SaveManager.perk_level(id)
+		if lv < Perks.MAX_LEVEL:
+			var p: int = Perks.price(lv + 1)
+			if cheapest < 0 or p < cheapest:
+				cheapest = p
+	_yard_dot.visible = cheapest >= 0 and funds >= cheapest
+
+
+## Pulsing "you can buy something" dot on the Shipyard button.
+class _YardDot extends Control:
+	var _t: float = 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var c: Vector2 = size * 0.5
+		var k: float = 0.5 + 0.5 * sin(_t * 4.0)
+		ArtUtil.circ(self, c, 13.0 + 3.0 * k, Color(Palette.CORAL.r, Palette.CORAL.g, Palette.CORAL.b, 0.28))
+		ArtUtil.circ(self, c, 10.0, Color.WHITE)
+		ArtUtil.circ(self, c, 8.0, Palette.CORAL)
+		ArtUtil.text(self, "!", Vector2(0, c.y + 6.0), 15, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, size.x)
 
 
 func _build_bottom() -> PanelContainer:
@@ -227,6 +324,7 @@ func _refresh_all() -> void:
 	for n in _canvas.nodes:
 		n.refresh()
 	_star_counter.set_count(SaveManager.total_stars(), maxi(ContentDB.campaign().size() * 3, 1))
+	_refresh_yard()
 	if _selected != &"":
 		_populate(_selected, false)
 

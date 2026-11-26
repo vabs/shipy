@@ -56,3 +56,8 @@ func _draw() -> void:
 		var tt := fmod(_t + i * 0.3, 3.0)
 		IconArt.draw_bubble(self, Vector2(1100 + i * 75, 760), bubbles[i], tt, 1.0)
 		GuestArt.draw_guest(self, Vector2(1100 + i * 75, 800), {"body_color": Palette.SUN, "pose": &"stand", "t": _t})
+	# Shipyard perk badges + v2 UI glyphs (PerkArt)
+	var perk_ids := PerkArt.IDS
+	for i in range(perk_ids.size()):
+		PerkArt.draw_badge(self, perk_ids[i], Vector2(1110 + i * 100, 930), 76.0, _t)
+		U.text(self, String(perk_ids[i]), Vector2(1060 + i * 100, 995), 14, Palette.CREAM, HORIZONTAL_ALIGNMENT_CENTER, 100.0, f)

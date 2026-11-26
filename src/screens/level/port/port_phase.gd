@@ -31,6 +31,11 @@ const CONFIRM_PATH: String = "res://src/ui/overlays/confirm_dialog.gd"
 
 ## Screen px (1080 base) covered by the host's top bar. Set before setup().
 var top_inset: float = 96.0
+## Extra room the camera keeps free on the left (the port-stop pier). Set before setup() or any time.
+var left_inset: float = 0.0
+## Quick refit at a mid-voyage port stop (docs/SPEC.md §13.8): setup() was given a RefitState. Place + upgrade + hire only: no
+## sell, move, undo, manifest or validation; "Cast off!" instead of "Set Sail!" (still the `set_sail_requested` signal).
+var _refit: bool = false
 
 var _level: LevelDef
 var _port: PortState
@@ -91,6 +96,7 @@ var _have_event_mouse: bool = false
 func setup(level: LevelDef, port: PortState, ship_view: ShipView, camera: ShipCamera) -> void:
 	_level = level
 	_port = port
+	_refit = port.is_refit()
 	_view = ship_view
 	_cam = camera
 	# follow whatever top inset the host chose for its top bar
@@ -252,6 +258,8 @@ func _build_ui() -> void:
 	_bar.name = "BuildBar"
 	add_child(_bar)
 	_bar.setup(_port)
+	if _refit:
+		_bar.configure_refit((_port as RefitState).stop_name)
 	_bar.tab_changed.connect(func(t: StringName) -> void:
 		_hide_tooltip()
 		port_action.emit(&"tab", {"tab": t}))
@@ -327,6 +335,7 @@ func _build_ui() -> void:
 	add_child(_errors_card)
 
 	_popover = PortPopover.new()
+	_popover.refit = _refit
 	add_child(_popover)
 	_popover.move_requested.connect(func(uid: int) -> void: _begin_carry(uid))
 	_popover.upgrade_requested.connect(_do_upgrade)
@@ -378,7 +387,9 @@ func _process_impl(delta: float) -> void:
 			if _press["src"] == &"room":
 				var uid: int = int(_press["uid"])
 				var room: PlacedRoom = _port.layout.get_room(uid)
-				if room != null and room.locked:
+				if _refit:
+					pass   # no moving rooms at a port stop: a drag from a room does nothing
+				elif room != null and room.locked:
 					_buzz()
 					show_toast("That room is part of the ship", &"lock", Palette.SUN)
 					_press.clear()
@@ -398,7 +409,7 @@ func _apply_insets(force: bool) -> void:
 	var inset: float = bottom_inset()
 	if force or absf(inset - _last_inset) > 0.5:
 		_last_inset = inset
-		_cam.set_insets(top_inset, inset)
+		_cam.set_insets(top_inset, inset, left_inset)
 
 
 func _pointer_over_ui(m: Vector2) -> bool:
@@ -749,7 +760,7 @@ func _arm(room_id: StringName) -> void:
 
 func _begin_carry(uid: int) -> void:
 	var room: PlacedRoom = _port.layout.get_room(uid)
-	if room == null:
+	if room == null or _refit:
 		return
 	if room.locked:
 		_buzz()
@@ -930,7 +941,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if ke.keycode >= KEY_1 and ke.keycode <= KEY_8 and not ke.ctrl_pressed and not ke.meta_pressed and not ke.alt_pressed:
 			var idx: int = ke.keycode - KEY_1
-			if idx < PortBuildBar.TABS.size():
+			if idx < PortBuildBar.TABS.size() and not (_refit and PortBuildBar.TABS[idx]["id"] == &"manifest"):
 				_bar.set_collapsed(false)
 				_bar.select_tab(PortBuildBar.TABS[idx]["id"])
 				get_viewport().set_input_as_handled()
@@ -1068,7 +1079,7 @@ func _do_move(uid: int, deck: int, x: int) -> bool:
 
 func _do_sell(uid: int) -> void:
 	var room: PlacedRoom = _port.layout.get_room(uid)
-	if room == null:
+	if room == null or _refit:
 		return
 	var rect: Rect2 = _room_rect_of(room)
 	var name_s: String = room.def.display_name
@@ -1139,6 +1150,8 @@ func _do_fire(role: StringName) -> void:
 
 
 func _do_undo() -> void:
+	if _refit:
+		return
 	if not _undo.can_undo():
 		_buzz()
 		show_toast("Nothing to undo", &"clock", Palette.SUN)
@@ -1237,6 +1250,9 @@ static func _short(msg: String) -> String:
 
 
 func _update_status() -> void:
+	if _refit:
+		_bar.set_status("Docked at %s. Build, upgrade or hire, then cast off." % (_port as RefitState).stop_name, Palette.MINT)
+		return
 	var v: Dictionary = _port.validate()
 	var errors: Array = v["errors"]
 	var warnings: Array = v["warnings"]
@@ -1257,6 +1273,9 @@ func _on_sail_pressed() -> void:
 	if _mode != Mode.IDLE:
 		_cancel_mode()
 	_deselect()
+	if _refit:
+		_do_sail()   # nothing to validate at a port stop: the ship is already at sea
+		return
 	var v: Dictionary = _port.validate()
 	var errors: Array = v["errors"]
 	var warnings: Array = v["warnings"]

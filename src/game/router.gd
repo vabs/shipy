@@ -5,7 +5,7 @@ extends Node
 ##   res://src/screens/<name>/<name>_screen.gd
 ## Each screen script must extend Control or Node2D/Node and may implement
 ##   func setup(params: Dictionary) -> void   # called BEFORE it enters the tree
-## Known screen names: "menu", "map", "level", "settings", "gallery" (dev only).
+## Known screen names: "menu", "map", "level", "shipyard", "settings", "gallery" (dev only).
 
 signal screen_changed(screen_name: String)
 

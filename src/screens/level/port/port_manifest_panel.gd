@@ -7,22 +7,26 @@ const U := preload("res://src/render/art/art_util.gd")
 ## EventDef.icon ids -> IconArt ids.
 const EVENT_ICONS: Dictionary = {
 	&"ghost": &"ghost", &"sun": &"smile", &"star": &"star", &"skull_drop": &"sick", &"film": &"need_fun",
-	&"thermo": &"need_hygiene", &"bolt": &"power", &"fork": &"need_hunger", &"aurora": &"event",
+	&"thermo": &"need_hygiene", &"bolt": &"power", &"fork": &"need_hunger", &"aurora": &"event", &"storm": &"storm",
 }
 
 var _port: PortState
 var _beds_box: VBoxContainer
 var _wave_chart: _WaveChart
+var _family_label: Label
+var _family_row: Control
 
 
 ## Wave timeline: a little bar per wave at its spawn time with the guest count above it.
 class _WaveChart extends Control:
 	var waves: Array = []
+	## VIP arrivals [{t, kind}]: a gold star badge on the time axis.
+	var vips: Array = []
 	var duration: float = 200.0
 
 	func _init() -> void:
 		custom_minimum_size = Vector2(0, 88)
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mouse_filter = Control.MOUSE_FILTER_PASS
 
 	func _ctext(text: String, pos: Vector2, size_px: int, color: Color, regular: bool) -> void:
 		var f: Font = ArtUtil.font() if regular else ArtUtil.font_bold()
@@ -56,6 +60,10 @@ class _WaveChart extends Control:
 				var ss: int = int(t) % 60
 				_ctext("%d:%02d" % [mm, ss], Vector2(cx, h - 3.0), 14, UITheme.TEXT_MUTED, true)
 				last_label_x = cx
+		for vd in vips:
+			var vt: float = float((vd as Dictionary).get("t", 0.0))
+			var vx: float = left + clampf(vt / maxf(duration, 1.0), 0.0, 1.0) * (span - 10.0) + 6.0
+			IconArt.draw_icon(self, &"vip", Vector2(vx, base_y + 10.0), 19.0, 0.0, false)
 
 
 func setup(port: PortState) -> void:
@@ -107,10 +115,48 @@ func _build() -> void:
 	var dl := UIKit.small_label(fmt_time(lvl.duration))
 	hdr.add_child(dl)
 	g.add_child(hdr)
+	# couples / families / kids on the manifest (a hint to build a kids' club shows while there is none)
+	var man0: Dictionary = _port.manifest()
+	var groups0: Dictionary = man0.get("groups", {})
+	if int(groups0.get("groups", 0)) > 0:
+		_family_row = UIKit.hbox(6)
+		var fi := IconView.new()
+		fi.icon = &"family"
+		fi.icon_size = 24.0
+		_family_row.add_child(fi)
+		_family_label = UIKit.small_label("")
+		_family_label.add_theme_font_size_override("font_size", 16)
+		_family_label.clip_text = true
+		_family_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_family_row.add_child(_family_label)
+		_family_row.mouse_filter = Control.MOUSE_FILTER_PASS
+		g.add_child(_family_row)
+	if not lvl.port_stop.is_empty():
+		# a mid-voyage port stop (SPEC §13.8): when, how many go ashore, how many board
+		var pr := UIKit.hbox(6)
+		var pi := IconView.new()
+		pi.icon = &"event"
+		pi.icon_size = 24.0
+		pr.add_child(pi)
+		var pl := UIKit.small_label("Stop: %s, %s" % [String(lvl.port_stop.get("name", "port")), fmt_time(float(lvl.port_stop.get("t", 0.0)))])
+		pl.add_theme_font_size_override("font_size", 16)
+		pl.clip_text = true
+		pl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pr.add_child(pl)
+		pr.tooltip_text = "Port stop at %s: %d%% of the guests go on an excursion and %d new ones board after a quick refit with your voyage money." % [
+				String(lvl.port_stop.get("name", "port")), int(round(float(lvl.port_stop.get("disembark", 0.0)) * 100.0)), lvl.port_board()]
+		pr.mouse_filter = Control.MOUSE_FILTER_PASS
+		g.add_child(pr)
 	_wave_chart = _WaveChart.new()
 	_wave_chart.waves = lvl.waves
+	_wave_chart.vips = man0.get("vips", [])
 	_wave_chart.duration = lvl.duration
 	_wave_chart.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	if not _wave_chart.vips.is_empty():
+		var vt: PackedStringArray = []
+		for vd in _wave_chart.vips:
+			vt.append("%s at %s" % [VipSim.kind_label(StringName(vd["kind"])), fmt_time(float(vd["t"]))])
+		_wave_chart.tooltip_text = "VIP guests: %s.\nThey weigh x3 in the rating and give a verdict worth +$%d or -$%d." % [", ".join(vt), SimConst.VIP_GREAT_PAY, SimConst.VIP_BAD_COST]
 	g.add_child(_wave_chart)
 	# --- archetypes ----
 	var a := _card("Who's coming", 404.0)
@@ -164,7 +210,7 @@ func _build() -> void:
 	if evs.is_empty():
 		ev.add_child(UIKit.small_label("Smooth sailing expected."))
 	if lvl.random_event_interval > 0.0:
-		var more := UIKit.small_label("+ surprises along the way")
+		var more := UIKit.small_label("+ surprises along the way" + (", maybe a storm" if lvl.campaign_index >= 8 else ""))
 		more.add_theme_font_size_override("font_size", 16)
 		ev.add_child(more)
 	# --- goals ----
@@ -250,12 +296,42 @@ func _archetype_cell(arch: ArchetypeDef, count: int) -> Control:
 	return pc
 
 
+func _refresh_family_row(man: Dictionary) -> void:
+	if _family_label == null:
+		return
+	var gr: Dictionary = man.get("groups", {})
+	var kids: int = int(man.get("kids", 0))
+	var parts: PackedStringArray = []
+	if int(gr.get("families", 0)) > 0:
+		parts.append("%d famil%s" % [int(gr["families"]), "y" if int(gr["families"]) == 1 else "ies"])
+	if int(gr.get("couples", 0)) > 0:
+		parts.append("%d couple%s" % [int(gr["couples"]), "" if int(gr["couples"]) == 1 else "s"])
+	var club: RoomDef = ContentStore.room(&"kids_club")
+	var has_club: bool = _port.layout.count_of(&"kids_club") > 0
+	var can_club: bool = club != null and _port.grid.room_lock_reason(&"kids_club") == ""
+	var txt: String = ", ".join(parts)
+	var warn: bool = false
+	if kids > 0:
+		txt += ", %d kid%s" % [kids, "" if kids == 1 else "s"]
+		if can_club and not has_club:
+			txt = "%d kid%s: build a Kids' Club!" % [kids, "" if kids == 1 else "s"]
+			warn = true
+	_family_label.text = txt
+	_family_label.add_theme_color_override("font_color", Palette.CORAL_DARK if warn else UITheme.TEXT_MUTED)
+	var tip: String = "Couples and families board together and want one cabin (3-4 free beds), or they split up and grumble.\nMembers within 3 cells cheer each other up."
+	if kids > 0:
+		tip += "\nKids love the Kids' Club, pool and arcade, and get bored fast."
+	_family_row.tooltip_text = tip
+
+
 func refresh() -> void:
 	if _port == null or _beds_box == null:
 		return
 	var man: Dictionary = _port.manifest()
+	_refresh_family_row(man)
 	var beds: int = int(man.get("beds", 0))
-	var guests: int = int(man.get("guests", 0))
+	# beds are compared with the most people aboard at once (excursion guests free theirs at a port stop)
+	var guests: int = int(man.get("peak_guests", man.get("guests", 0)))
 	var built: int = int(man.get("cabins_built", 0))
 	var needed: int = int(man.get("cabins_needed", 0))
 	var short: bool = beds < guests
@@ -285,6 +361,14 @@ func refresh() -> void:
 	info.add_theme_font_size_override("font_size", 18)
 	info.add_theme_color_override("font_color", Palette.CORAL_DARK if short else UITheme.TEXT_MUTED)
 	_beds_box.add_child(info)
+	var total_guests: int = int(man.get("guests", 0))
+	if guests < total_guests:
+		# a port stop sends part of the crowd ashore, so fewer beds than guests are needed at any moment
+		var pk := UIKit.small_label("%d aboard at the peak" % guests)
+		pk.add_theme_font_size_override("font_size", 16)
+		_beds_box.add_child(pk)
+		_beds_box.tooltip_text = "%d guests board in all, but guests who go ashore at the port stop free their beds before the new arrivals come aboard." % total_guests
+		_beds_box.mouse_filter = Control.MOUSE_FILTER_PASS
 	if short:
 		var w := Label.new()
 		w.text = "Guests without a bed grow cranky."

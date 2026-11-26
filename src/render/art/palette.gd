@@ -57,9 +57,11 @@ const ROOM_COLORS: Dictionary = {
 	&"cinema": {"wall": Color("4A4570"), "accent": Color("B39DDB")},
 	&"gym": {"wall": Color("D9EBFF"), "accent": Color("3AA0C8")},
 	&"arcade": {"wall": Color("3B3566"), "accent": Color("FF6FA8")},
+	&"kids_club": {"wall": Color("FFE3EF"), "accent": Color("FF8FB1")},
 	&"restaurant": {"wall": Color("F7E0D2"), "accent": Color("C23B49")},
 	&"medbay": {"wall": Color("E6F6F2"), "accent": Color("E8505B")},
 	&"sauna": {"wall": Color("D9A066"), "accent": Color("FFC857")},
+	&"crew_quarters": {"wall": Color("E6E1F2"), "accent": Color("6C8CD5")},
 	&"ice_rink": {"wall": Color("DDF3FF"), "accent": Color("3AA0C8")},
 	&"casino": {"wall": Color("45306B"), "accent": Color("7ED6A5")},
 	&"stairs": {"wall": Color("EDE3D2"), "accent": Color("3AA0C8")},
@@ -157,6 +159,7 @@ const _PROBLEM: Dictionary = {
 	&"sick": [Color("5DC57A"), Color("FFFFFF")],
 	&"angry": [Color("E8505B"), Color("000000")],
 	&"ghost": [Color("F4F1FF"), Color("56B4E9")],
+	&"seasick": [Color("6FD6C4"), Color("F0E442")],
 }
 
 
@@ -171,6 +174,30 @@ static func alert_color(colorblind: bool = false) -> Color:
 	return Color("D55E00") if colorblind else CORAL
 
 
+## Accent colour of a crew role (badges, plates, tooltips).
+static func role_color(role: StringName) -> Color:
+	match role:
+		&"janitor": return TEAL
+		&"mechanic": return SUN_DEEP
+		&"medic": return CORAL
+		&"entertainer": return LILAC
+		&"chef": return ORANGE
+		&"warden": return LILAC_DARK
+	return STEEL
+
+
+## Soft portrait plate colour of a crew role.
+static func role_plate(role: StringName) -> Color:
+	match role:
+		&"janitor": return Color("CDEFFB")
+		&"mechanic": return Color("FFE3A8")
+		&"medic": return Color("FFDCDC")
+		&"entertainer": return Color("E9DDFB")
+		&"chef": return Color("FFE8CC")
+		&"warden": return Color("D6CFF2")
+	return Color("FFE3A8")
+
+
 ## Default body colours for guest archetypes.
 static func archetype_color(id: StringName) -> Color:
 	match id:
@@ -178,4 +205,29 @@ static func archetype_color(id: StringName) -> Color:
 		&"fitness_fan": return Color("6EC6A5")
 		&"film_buff": return Color("A58BE0")
 		&"gamer": return Color("FF7FA8")
+		&"kid": return Color("8FD8F0")
 	return Color("F2B880")
+
+
+## Matching colour of a couple's / family's heart pins and the link drawn between them on hover (by 1-based group id).
+const GROUP_COLORS: Array[Color] = [
+	Color("FF5C8A"), Color("2FA8E0"), Color("8E6FDB"), Color("2DBE84"), Color("F2A024"), Color("FF7A45"),
+]
+
+
+static func group_color(group_id: int) -> Color:
+	return GROUP_COLORS[posmod(group_id - 1, GROUP_COLORS.size())]
+
+
+## Gold used for VIP outlines, stars and banners.
+const VIP_GOLD := Color("FFD36E")
+const VIP_GOLD_DARK := Color("E0A21B")
+
+
+## Accent colour of a VIP kind (tooltips, banners, results rows).
+static func vip_color(kind: StringName) -> Color:
+	match kind:
+		&"critic": return Color("B83A63")
+		&"celebrity": return Color("8E6FDB")
+		&"inspector": return Color("3D5073")
+	return VIP_GOLD_DARK

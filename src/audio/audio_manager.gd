@@ -64,8 +64,11 @@ const SIM_SFX: Dictionary = {
 	&"mess_cleaned": [&"clean", 0.0],
 	&"ghost_spawned": [&"ghost", 0.0],
 	&"ghost_banished": [&"banish", 0.0],
+	&"staff_tired": [&"alert", -12.0],
 	&"event_started": [&"event_horn", 0.0],
 	&"wave_started": [&"wave_board", 0.0],
+	&"port_stop_started": [&"dock_horn", 0.0],
+	&"port_stop_ended": [&"set_sail_horn", 0.0],
 }
 
 class MusicSlot:
@@ -97,6 +100,10 @@ var _requested_fade: float = MUSIC_FADE
 var _intensity: float = 0.0
 var _intensity_target: float = 0.0
 
+var _amb_player: AudioStreamPlayer = null
+var _amb_name: StringName = &""
+var _amb_level: float = 0.0
+var _amb_target: float = 0.0
 var _sim_ref: WeakRef = null
 var _sim_connections: Array = []   # [signal_name, Callable]
 var _last_mutiny_warn: float = -100.0
@@ -261,7 +268,7 @@ func _load_baked_audio() -> void:
 		push_warning("AudioManager: unreadable baked audio manifest")
 		return
 	for sfx_name: StringName in SfxBank.NAMES:
-		var sfx_stream: AudioStreamWAV = _load_baked_stream("sfx_%s.wav" % sfx_name, 0)
+		var sfx_stream: AudioStreamWAV = _load_baked_stream("sfx_%s.wav" % sfx_name, SfxBank.loop_frames(sfx_name))
 		if sfx_stream != null:
 			_sfx[sfx_name] = sfx_stream
 			sfx_ready.emit(sfx_name)
@@ -305,7 +312,7 @@ func _on_thread_done() -> void:
 
 
 func _on_sfx_rendered(sfx_name: StringName, pcm: PackedByteArray) -> void:
-	_sfx[sfx_name] = SU.make_stream(pcm, SU.SR_SFX)
+	_sfx[sfx_name] = SU.make_stream(pcm, SU.SR_SFX, SfxBank.loop_frames(sfx_name))
 	sfx_ready.emit(sfx_name)
 
 
@@ -371,6 +378,35 @@ func play_sfx(sfx_name: StringName, pitch_jitter: float = 0.05, volume_db: float
 	p.volume_db = vol
 	p.pitch_scale = maxf(0.1, (1.0 + randf_range(-pitch_jitter, pitch_jitter)) * pitch_mult)
 	p.play()
+
+
+## Looping ambience bed (the storm's rain): `level` 0..1 fades it in and out (call every frame or whenever it changes).
+## `set_ambience(&"rain", 0.0)` lets it fade away.
+func set_ambience(sfx_name: StringName, level: float) -> void:
+	_amb_name = sfx_name
+	_amb_target = clampf(level, 0.0, 1.0)
+	set_process(true)
+
+
+func _update_ambience(delta: float) -> bool:
+	_amb_level = move_toward(_amb_level, _amb_target, delta / 1.5)
+	if _amb_player == null:
+		if _amb_level <= 0.0:
+			return false
+		_amb_player = AudioStreamPlayer.new()
+		_amb_player.bus = BUS_SFX
+		add_child(_amb_player)
+	var stream: AudioStream = _sfx.get(_amb_name)
+	if _amb_level <= 0.001 or stream == null:
+		if _amb_player.playing:
+			_amb_player.stop()
+		return _amb_target > 0.0
+	if _amb_player.stream != stream:
+		_amb_player.stream = stream
+	if not _amb_player.playing:
+		_amb_player.play()
+	_amb_player.volume_db = lerpf(-44.0, -6.0, _amb_level * _amb_level)
+	return true
 
 
 func _free_player(now: float) -> AudioStreamPlayer:
@@ -479,7 +515,7 @@ func _start_music(track_name: StringName, fade: float) -> void:
 
 func _process(delta: float) -> void:
 	_intensity = move_toward(_intensity, _intensity_target, delta / 1.2)
-	var any_active: bool = false
+	var any_active: bool = _update_ambience(delta)
 	for s in _slots:
 		s.fade = move_toward(s.fade, s.target, delta / s.fade_time)
 		if s.target <= 0.0 and s.fade <= 0.0:
@@ -545,6 +581,10 @@ func bind_sim(sim: Object) -> void:
 		_connect_sim_args(sim, &"room_used", 3, _on_room_used, _on_sim_simple.bind(&"coin", 0.0))
 	if sim.has_signal(&"money_changed"):
 		_connect_sim_args(sim, &"money_changed", 3, _on_money_changed, Callable())
+	if sim.has_signal(&"vip_boarded"):
+		_connect_sim(sim, &"vip_boarded", _unbound(_on_sim_simple.bind(&"vip_arrive", 0.0), _signal_arity(sim, &"vip_boarded")))
+	if sim.has_signal(&"vip_verdict"):
+		_connect_sim_args(sim, &"vip_verdict", 3, _on_vip_verdict, Callable())
 	if sim.has_signal(&"mutiny_warning"):
 		_connect_sim_args(sim, &"mutiny_warning", 1, _on_mutiny_warning, _on_sim_simple.bind(&"mutiny_warn", 0.0))
 	if sim.has_signal(&"mutiny_cleared"):
@@ -601,6 +641,13 @@ func _on_room_used(_room_uid: int, _guest_id: int, spend: int) -> void:
 func _on_money_changed(_money: int, _delta: int, reason: StringName) -> void:
 	if reason == &"hires" or reason == &"hire":
 		play_sfx(&"hire", 0.02)
+
+
+func _on_vip_verdict(_guest_id: int, _kind: StringName, grade: StringName) -> void:
+	match grade:
+		&"great": play_sfx(&"vip_great", 0.02)
+		&"bad": play_sfx(&"vip_bad", 0.02)
+		_: play_sfx(&"vip_ok", 0.02)
 
 
 func _on_mutiny_warning(_seconds_left: float) -> void:

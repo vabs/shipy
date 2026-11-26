@@ -36,10 +36,12 @@ static func back(ci: CanvasItem, id: StringName, R: Rect2, tier: int, st: Dictio
 		&"cinema": _cinema(ci, R, tier, st, false)
 		&"gym": _gym(ci, R, tier, st)
 		&"arcade": _arcade(ci, R, tier, st)
+		&"kids_club": _kids_club(ci, R, tier, st, false)
 		&"restaurant": _restaurant(ci, R, tier, st, false)
 		&"medbay": _medbay(ci, R, tier, st)
 		&"sauna": _sauna(ci, R, tier, st, false)
 		&"ice_rink": _ice_rink(ci, R, tier, st, false)
+		&"crew_quarters": _crew_quarters(ci, R, tier, st, false)
 		&"casino": _casino(ci, R, tier, st)
 		&"generator": _generator(ci, R, tier, st)
 		&"water_tank": _water_tank(ci, R, tier, st)
@@ -52,9 +54,11 @@ static func front(ci: CanvasItem, id: StringName, R: Rect2, tier: int, st: Dicti
 		&"bar": _bar(ci, R, tier, st, true)
 		&"pool": _pool(ci, R, tier, st, true)
 		&"cinema": _cinema(ci, R, tier, st, true)
+		&"kids_club": _kids_club(ci, R, tier, st, true)
 		&"restaurant": _restaurant(ci, R, tier, st, true)
 		&"sauna": _sauna(ci, R, tier, st, true)
 		&"ice_rink": _ice_rink(ci, R, tier, st, true)
+		&"crew_quarters": _crew_quarters(ci, R, tier, st, true)
 
 
 # =================================================================================================
@@ -117,6 +121,14 @@ static func slot_pos(id: StringName, R: Rect2, slot: int, cap: int) -> Vector2:
 			var k := s % 4
 			var row := s / 4
 			return Vector2(x0 + 15.0 + float(k) * 30.0 + float(row) * 8.0, R.end.y - 3.0 - float(mini(row, 1)) * 7.0)
+		&"kids_club":
+			# kids stand in the ball pit (two staggered rows, the pit's front rim hides their feet)
+			var n := maxi(cap, 1)
+			var rows := 2
+			var per := int(ceil(float(n) / float(rows)))
+			var row := s % rows
+			var idx := s / rows
+			return Vector2(_row(x0 + 58.0, x0 + w - 12.0, idx, per) + (6.0 if row == 1 else 0.0), fy - 6.5 + float(row) * 3.5)
 		&"restaurant":
 			var k := s % 4
 			var tbl := k / 2
@@ -130,6 +142,10 @@ static func slot_pos(id: StringName, R: Rect2, slot: int, cap: int) -> Vector2:
 		&"medbay":
 			var k := s % 2
 			return Vector2((x0 + 17.0) if k == 0 else (x0 + w - 17.0), fy - 9.0)
+		&"crew_quarters":
+			# left double-decker first (lower, upper), then the right one (tier II / III)
+			var side := (s / 2) % 2
+			return Vector2((x0 + 17.0) if side == 0 else (x0 + w - 17.0), (fy - 11.0) if s % 2 == 0 else (fy - 33.0))
 		&"sauna":
 			var table: Array[Vector2] = [Vector2(54.0, -21.5), Vector2(70.0, -21.5), Vector2(62.0, -9.5), Vector2(46.0, -9.5)]
 			var p := table[s % 4]
@@ -213,6 +229,89 @@ static func _cabin(ci: CanvasItem, R: Rect2, tier: int, st: Dictionary, front: b
 		# bedside lamp glow
 		U.circ(ci, Vector2(cx + 15.0, fy - 28.0), 9.0, Color(1.0, 0.9, 0.5, 0.18))
 		U.circ(ci, Vector2(cx + 15.0, fy - 28.0), 3.0, Color(1.0, 0.95, 0.6, 0.9))
+
+
+# =================================================================================================
+# CREW QUARTERS  (80 px): bunks for tired crew, lockers, a coffee mug and a "crew only" plate
+# =================================================================================================
+static func _crew_quarters(ci: CanvasItem, R: Rect2, tier: int, st: Dictionary, front: bool) -> void:
+	var x0 := R.position.x
+	var y0 := R.position.y
+	var w := R.size.x
+	var fy := R.end.y - 11.0
+	var t: float = st.get("t", 0.0)
+	var occ := _occ(st, &"crew_quarters", tier)
+	var bw := 28.0
+	var lx := x0 + 3.0
+	var rx := x0 + w - 3.0 - bw
+	var blanket := _k(Palette.TEAL, st)
+	if front:
+		U.dyn_begin()
+		for k in range(mini(occ, 4)):
+			var bx := lx if k < 2 else rx
+			var surf := (fy - 11.0) if k % 2 == 0 else (fy - 33.0)
+			U.rr(ci, Rect2(bx + 10.0, surf - 9.0, 18.0, 9.5), 4.0, blanket)
+			U.rect(ci, Rect2(bx + 14.5, surf - 8.5, 2.6, 8.5), Color(1, 1, 1, 0.45))
+			U.rect(ci, Rect2(bx + 20.0, surf - 8.0, 2.6, 8.5), Color(1, 1, 1, 0.45))
+			U.rr(ci, Rect2(bx + 11.0, surf - 8.2, 6.0, 3.0), 1.5, Color(1, 1, 1, 0.18))
+		U.dyn_end()
+		return
+	# "CREW ONLY" plate above the left bunk, hazard-striped
+	var pr := Rect2(lx + 1.0, y0 + 12.0, 19.0, 10.0)
+	U.rr(ci, pr.grow(1.0), 3.0, _k(Palette.NAVY, st))
+	U.rr(ci, pr, 2.4, _k(Palette.SUN, st))
+	for i in range(4):
+		U.poly(ci, PackedVector2Array([Vector2(pr.position.x + 1.0 + float(i) * 5.0, pr.end.y), Vector2(pr.position.x + 3.4 + float(i) * 5.0, pr.end.y), Vector2(pr.position.x + 5.0 + float(i) * 5.0, pr.position.y), Vector2(pr.position.x + 2.6 + float(i) * 5.0, pr.position.y)]), Color(0.12, 0.14, 0.24, 0.85))
+	U.rr(ci, pr.grow(-2.2), 1.6, _k(Palette.CREAM, st))
+	U.text(ci, "CREW", Vector2(pr.position.x, pr.position.y + 7.6), 6, _k(Palette.NAVY, st), HORIZONTAL_ALIGNMENT_CENTER, pr.size.x, U.font_bold())
+	# lockers on the right wall
+	for i in range(2):
+		var lk := Rect2(rx + 2.0 + float(i) * 13.0, fy - 40.0, 12.0, 39.0)
+		U.rr(ci, lk, 2.0, _k(Palette.STEEL_DARK, st))
+		U.rr(ci, lk.grow(-1.0), 1.5, _k(Palette.STEEL.lerp(Palette.TEAL_LIGHT, 0.35), st))
+		U.rect(ci, Rect2(lk.position.x + 2.2, lk.position.y + 4.0, lk.size.x - 4.4, 1.0), _k(Palette.STEEL_DARK, st))
+		U.rect(ci, Rect2(lk.position.x + 2.2, lk.position.y + 6.4, lk.size.x - 4.4, 1.0), _k(Palette.STEEL_DARK, st))
+		U.circ(ci, Vector2(lk.end.x - 3.0, lk.position.y + 19.0), 1.0, _k(Palette.GOLD, st))
+	# coffee mug on the lockers, steaming
+	var mc := Vector2(rx + 24.0, fy - 40.0)
+	U.rr(ci, Rect2(mc.x - 3.6, mc.y - 5.6, 7.2, 5.6), 1.6, _k(Palette.CORAL, st))
+	U.arc(ci, Vector2(mc.x + 3.6, mc.y - 2.9), 2.0, -PI * 0.5, PI * 0.5, _k(Palette.CORAL, st), 1.2, 6)
+	U.ellipse(ci, Vector2(mc.x, mc.y - 5.6), 3.0, 0.9, Color("6B4226"))
+	U.dyn_begin()
+	if not st.get("broken", false):
+		for i in range(2):
+			var k := fmod(t * 0.7 + float(i) * 0.5, 1.0)
+			U.circ(ci, Vector2(mc.x + sin(k * 6.0 + float(i) * 2.0) * 1.6, mc.y - 7.0 - k * 9.0), 1.0 + k * 1.4, Color(1, 1, 1, 0.55 * (1.0 - k)))
+	U.dyn_end()
+	# bunks: left double-decker always, right one from tier II (lower) and tier III (upper)
+	for side in range(2):
+		var bx := lx if side == 0 else rx
+		var shown_levels := 2 if side == 0 else (0 if tier < 2 else (1 if tier == 2 else 2))
+		if shown_levels == 0:
+			continue
+		var post_h := 42.0 if shown_levels == 2 else 24.0
+		U.rr(ci, Rect2(bx - 0.5, fy - post_h - 1.0, 3.2, post_h), 1.5, _k(Palette.STEEL_DARK, st))
+		U.rr(ci, Rect2(bx + bw - 2.7, fy - post_h - 1.0, 3.2, post_h), 1.5, _k(Palette.STEEL_DARK, st))
+		for lvl in range(shown_levels):
+			var surf := (fy - 11.0) if lvl == 0 else (fy - 33.0)
+			var k := side * 2 + lvl
+			U.rr(ci, Rect2(bx, surf + 3.5, bw, 3.5), 1.5, _k(Palette.STEEL, st))
+			U.rr(ci, Rect2(bx, surf, bw, 4.5), 2.2, _k(Color("F3F6FB"), st))
+			U.rr(ci, Rect2(bx + 2.0, surf - 3.2, 8.5, 4.0), 2.5, _k(Color("FFFFFF"), st))
+			if k >= occ:
+				U.dyn_begin()
+				U.rr(ci, Rect2(bx + 10.0, surf - 3.0, 18.0, 4.2), 2.0, blanket)
+				U.rect(ci, Rect2(bx + 14.5, surf - 3.0, 2.4, 4.0), Color(1, 1, 1, 0.4))
+				U.rect(ci, Rect2(bx + 20.0, surf - 3.0, 2.4, 4.0), Color(1, 1, 1, 0.4))
+				U.dyn_end()
+		if side == 0 and shown_levels == 2:
+			var lxp := bx + bw
+			U.rect(ci, Rect2(lxp, fy - 32.0, 1.6, 31.0), _k(Palette.STEEL, st))
+			U.rect(ci, Rect2(lxp + 3.2, fy - 32.0, 1.6, 31.0), _k(Palette.STEEL, st))
+			for r in range(4):
+				U.rect(ci, Rect2(lxp, fy - 28.0 + float(r) * 7.5, 4.8, 1.4), _k(Palette.STEEL_DARK, st))
+	if tier >= 2:
+		U.rr(ci, Rect2(x0 + w * 0.5 - 15.0, fy + 1.5, 30.0, 5.0), 2.5, Color(Palette.TEAL.r, Palette.TEAL.g, Palette.TEAL.b, 0.7))
 
 
 # =================================================================================================
@@ -749,6 +848,136 @@ static func _arcade(ci: CanvasItem, R: Rect2, tier: int, st: Dictionary) -> void
 		# coin door
 		U.rr(ci, Rect2(cxp - 4.0, fy - 8.0, 8.0, 6.0), 1.5, Color(0, 0, 0, 0.25))
 		U.rect(ci, Rect2(cxp - 0.5, fy - 7.0, 1.0, 3.0), Palette.GOLD)
+
+
+# =================================================================================================
+# KIDS' CLUB (120 px): ball pit, slide, crayon drawings and bunting
+# =================================================================================================
+const _BALLS: Array[Color] = [Color("FF6B81"), Color("FFC857"), Color("3AA0C8"), Color("7ED6A5"), Color("B39DDB"), Color("FF9F5A")]
+
+
+static func _kids_club(ci: CanvasItem, R: Rect2, tier: int, st: Dictionary, front: bool) -> void:
+	var x0 := R.position.x
+	var y0 := R.position.y
+	var w := R.size.x
+	var fy := R.end.y - 11.0
+	var t: float = st.get("t", 0.0)
+	var busy := float(st.get("busy_ratio", 0.0))
+	var pit0 := x0 + 47.0
+	var pit1 := x0 + w - 4.0
+	if front:
+		# the pit's front: a heap of balls spilling over a padded rim, in front of the kids' legs
+		var n := int((pit1 - pit0) / 5.6)
+		for i in range(n):
+			var bx := pit0 + 3.0 + float(i) * 5.6 + U.hash01(i * 7 + 1) * 1.6
+			var by := fy - 11.5 - U.hash01(i * 11 + 3) * 2.6
+			var c := _k(_BALLS[(i * 5 + 2) % _BALLS.size()], st)
+			U.circ(ci, Vector2(bx, by), 3.5, Palette.shade(c, 0.3))
+			U.circ(ci, Vector2(bx, by - 0.4), 3.2, c)
+			U.circ(ci, Vector2(bx - 1.0, by - 1.4), 0.9, Color(1, 1, 1, 0.65))
+		var rim := Rect2(pit0 - 1.5, fy - 9.0, pit1 - pit0 + 3.0, 11.5)
+		U.rr(ci, rim, 4.0, _k(Palette.shade(Color("FF8FB1"), 0.3), st))
+		U.rr(ci, Rect2(rim.position.x, rim.position.y - 0.8, rim.size.x, rim.size.y - 1.2), 4.0, _k(Color("FF8FB1"), st))
+		for i in range(int(rim.size.x / 12.0)):
+			U.rr(ci, Rect2(rim.position.x + 4.0 + float(i) * 12.0, rim.position.y + 2.2, 6.0, 5.0), 2.0, _k(Color("FFE8F1"), st))
+		U.rr(ci, Rect2(rim.position.x + 3.0, rim.position.y, rim.size.x - 6.0, 1.8), 0.9, Color(1, 1, 1, 0.4))
+		# a couple of balls bounce while kids are playing
+		U.dyn_begin()
+		if busy > 0.01 and not st.get("broken", false):
+			for k in range(3):
+				var ph := t * 5.0 + float(k) * 2.1
+				var bx := pit0 + 14.0 + float(k) * 19.0
+				var by := fy - 17.0 - absf(sin(ph)) * 9.0 * minf(busy * 1.5, 1.0)
+				var c2: Color = _BALLS[(k * 2 + 1) % _BALLS.size()]
+				U.circ(ci, Vector2(bx, by), 3.3, Palette.shade(c2, 0.3))
+				U.circ(ci, Vector2(bx, by - 0.4), 3.0, c2)
+		U.dyn_end()
+		return
+	# bunting across the ceiling (left and right of the sign)
+	var flags: Array[Color] = [Palette.CORAL, Palette.SUN, Palette.TEAL, Palette.MINT, Palette.LILAC]
+	for g in range(2):
+		var gx0 := (x0 + 3.0) if g == 0 else (x0 + w - 40.0)
+		var gx1 := gx0 + 37.0
+		U.pline(ci, PackedVector2Array([Vector2(gx0, y0 + 6.0), Vector2((gx0 + gx1) * 0.5, y0 + 11.5), Vector2(gx1, y0 + 6.0)]), Color(0.9, 0.85, 0.8, 0.9), 1.0)
+		for i in range(6):
+			var u := (float(i) + 0.5) / 6.0
+			var fx := lerpf(gx0, gx1, u)
+			var fy2 := y0 + 6.0 + sin(u * PI) * 5.5
+			U.poly(ci, PackedVector2Array([Vector2(fx - 3.2, fy2), Vector2(fx + 3.2, fy2), Vector2(fx, fy2 + 7.0)]), _k(flags[(i + g * 2) % flags.size()], st))
+	# crayon drawings pinned to the right wall
+	for d in range(2):
+		var px := x0 + w - 36.0 + float(d) * 17.0
+		var py := y0 + 17.0 + float(d % 2) * 3.0
+		U.rr(ci, Rect2(px + 0.6, py + 0.8, 14.0, 17.0), 1.0, Color(0, 0, 0, 0.12))
+		U.rr(ci, Rect2(px, py, 14.0, 17.0), 1.0, _k(Color("FFFDF4"), st))
+		U.circ(ci, Vector2(px + 7.0, py - 0.6), 1.2, _k(Palette.CORAL, st))
+		if d == 0:
+			# sun over a house
+			U.circ(ci, Vector2(px + 10.5, py + 4.0), 2.4, _k(Palette.SUN, st))
+			for k in range(6):
+				var a := float(k) * TAU / 6.0
+				U.line(ci, Vector2(px + 10.5, py + 4.0) + Vector2(cos(a), sin(a)) * 3.2, Vector2(px + 10.5, py + 4.0) + Vector2(cos(a), sin(a)) * 4.6, _k(Palette.SUN_DEEP, st), 0.7)
+			U.rect(ci, Rect2(px + 3.0, py + 10.0, 7.0, 5.0), _k(Palette.CORAL_LIGHT, st))
+			U.poly(ci, PackedVector2Array([Vector2(px + 2.0, py + 10.2), Vector2(px + 6.5, py + 6.4), Vector2(px + 11.0, py + 10.2)]), _k(Palette.TEAL, st))
+			U.rect(ci, Rect2(px + 5.4, py + 12.2, 2.2, 2.8), _k(Palette.WOOD, st))
+		else:
+			# rainbow + a stick figure
+			for k in range(3):
+				var rc: Color = [Palette.CORAL, Palette.SUN, Palette.TEAL][k]
+				U.arc(ci, Vector2(px + 7.0, py + 9.0), 5.6 - float(k) * 1.6, PI, TAU, _k(rc, st), 1.2, 8)
+			U.circ(ci, Vector2(px + 7.0, py + 11.4), 1.1, _k(Palette.NAVY, st))
+			U.line(ci, Vector2(px + 7.0, py + 12.4), Vector2(px + 7.0, py + 15.0), _k(Palette.NAVY, st), 0.7)
+			U.line(ci, Vector2(px + 5.2, py + 13.4), Vector2(px + 8.8, py + 13.4), _k(Palette.NAVY, st), 0.7)
+	if tier >= 2:
+		# a rainbow arch over the pit
+		var rc0 := Vector2(pit0 + (pit1 - pit0) * 0.5, fy - 18.0)
+		for k in range(4):
+			var rcol: Color = [Palette.CORAL, Palette.SUN, Palette.MINT, Palette.TEAL][k]
+			U.arc(ci, rc0, 30.0 - float(k) * 3.0, PI + 0.15, TAU - 0.15, Color(rcol.r, rcol.g, rcol.b, 0.5), 2.4, 14)
+	# ball pit: padded tray, back row of balls
+	var tray := Rect2(pit0 - 1.0, fy - 16.0, pit1 - pit0 + 2.0, 17.0)
+	U.rr(ci, tray, 4.0, _k(Palette.shade(Color("FFB3CD"), 0.25), st))
+	var nb := int((pit1 - pit0) / 5.0)
+	for i in range(nb):
+		var bx := pit0 + 2.5 + float(i) * 5.0 + U.hash01(i * 3 + 9) * 1.4
+		var by := fy - 15.0 - U.hash01(i * 17 + 5) * 3.0
+		var c := _k(_BALLS[(i * 3 + 1) % _BALLS.size()], st)
+		U.circ(ci, Vector2(bx, by), 3.3, Palette.shade(c, 0.3))
+		U.circ(ci, Vector2(bx, by - 0.4), 3.0, c)
+		U.circ(ci, Vector2(bx - 0.9, by - 1.3), 0.8, Color(1, 1, 1, 0.6))
+	# slide: ladder, platform, curved chute
+	var sx := x0 + 6.0
+	U.rr(ci, Rect2(sx, fy - 37.0, 2.2, 37.0), 1.0, _k(Palette.WOOD_DARK, st))
+	U.rr(ci, Rect2(sx + 9.0, fy - 37.0, 2.2, 37.0), 1.0, _k(Palette.WOOD_DARK, st))
+	for r in range(5):
+		U.rect(ci, Rect2(sx + 1.0, fy - 7.0 - float(r) * 7.0, 9.5, 1.5), _k(Palette.WOOD_LIGHT, st))
+	U.rr(ci, Rect2(sx - 2.0, fy - 39.0, 22.0, 3.6), 1.8, _k(Palette.TEAL_DARK, st))
+	U.rr(ci, Rect2(sx - 2.0, fy - 39.0, 22.0, 1.2), 0.6, Color(1, 1, 1, 0.35))
+	U.rect(ci, Rect2(sx + 17.0, fy - 49.0, 1.6, 10.0), _k(Palette.STEEL, st))
+	var chute := PackedVector2Array([Vector2(sx + 19.0, fy - 35.0), Vector2(sx + 27.0, fy - 31.0), Vector2(sx + 34.0, fy - 22.0), Vector2(sx + 39.0, fy - 12.0), Vector2(sx + 42.0, fy - 6.5)])
+	var curve := U.chaikin(U.chaikin(chute, false), false)
+	var shadow_pts := PackedVector2Array()
+	for p in curve:
+		shadow_pts.append(p + Vector2(0.0, 2.2))
+	U.pline(ci, shadow_pts, _k(Palette.shade(Palette.SUN_DEEP, 0.3), st), 7.5)
+	U.pline(ci, curve, _k(Palette.SUN, st), 7.0)
+	var hi := PackedVector2Array()
+	for p in curve:
+		hi.append(p + Vector2(-0.6, -1.7))
+	U.pline(ci, hi, Color(1, 1, 1, 0.45), 1.6)
+	# toys on the floor: alphabet blocks and a duck
+	U.rr(ci, Rect2(x0 + 40.0, fy - 5.0, 5.0, 5.0), 0.8, _k(Palette.CORAL, st))
+	U.rr(ci, Rect2(x0 + 41.5, fy - 9.6, 5.0, 5.0), 0.8, _k(Palette.MINT, st))
+	U.rect(ci, Rect2(x0 + 42.4, fy - 3.8, 3.0, 0.8), Color(1, 1, 1, 0.7))
+	U.circ(ci, Vector2(x0 + 24.0, fy - 2.6), 2.6, _k(Palette.SUN, st))
+	U.circ(ci, Vector2(x0 + 26.0, fy - 5.2), 1.7, _k(Palette.SUN, st))
+	U.poly(ci, PackedVector2Array([Vector2(x0 + 27.4, fy - 5.0), Vector2(x0 + 29.6, fy - 4.4), Vector2(x0 + 27.4, fy - 3.8)]), _k(Palette.ORANGE, st))
+	# pennants sway a little
+	U.dyn_begin()
+	for g in range(2):
+		var gx := (x0 + 3.0 + 18.5) if g == 0 else (x0 + w - 40.0 + 18.5)
+		U.circ(ci, Vector2(gx, y0 + 12.4 + sin(t * 2.0 + float(g)) * 0.4), 0.9, Color(1, 1, 1, 0.5))
+	U.dyn_end()
 
 
 # =================================================================================================

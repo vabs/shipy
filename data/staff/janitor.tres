@@ -8,3 +8,4 @@ id = &"janitor"
 display_name = "Janitor"
 work_time = 3.5
 speed = 2.6
+description = "Cleans up messes"

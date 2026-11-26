@@ -55,6 +55,7 @@ var _t: float = 0.0
 var _last_money: int = 0
 var _goal_rows: Array[Dictionary] = []
 var _pill_pending: Dictionary = {}   # event id -> true while its announcement pill is still on its way to the chip
+var _vip_chips: Dictionary = {}      # guest id -> {node, label} for VIPs whose review is still open
 
 
 class _Vignette extends Control:
@@ -86,6 +87,58 @@ class _Vignette extends Control:
 		draw_texture_rect(tex, Rect2(Vector2.ZERO, size), false, Color(1, 1, 1, clampf(intensity * pulse, 0.0, 1.0)))
 
 
+## Round role badge pinned to a roster portrait.
+class _RoleBadge extends Control:
+	var role: StringName = &"janitor"
+
+	func _init(r: StringName) -> void:
+		role = r
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(28, 28)
+
+	func _draw() -> void:
+		var c: Vector2 = size * 0.5
+		var rc: Color = Palette.role_color(role)
+		ArtUtil.circ(self, c + Vector2(0, 1.5), 13.5, Color(0.1, 0.14, 0.26, 0.28))
+		ArtUtil.circ(self, c, 13.0, rc)
+		ArtUtil.circ(self, c, 11.2, Palette.CREAM)
+		IconArt.draw_icon(self, IconArt.role_icon(role), c, 17.0)
+
+
+## Thin energy bar of a roster card (mint -> sun -> coral); pulses while the crew member rests.
+class _EnergyBar extends Control:
+	var value: float = 1.0
+	var resting: bool = false
+	var _t: float = 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(0, 10)
+		size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	func _process(delta: float) -> void:
+		if resting and is_visible_in_tree():
+			_t += delta
+			queue_redraw()
+
+	func set_value(v: float, rest: bool) -> void:
+		if absf(v - value) > 0.004 or rest != resting:
+			value = v
+			resting = rest
+			set_process(rest)
+			queue_redraw()
+
+	func _draw() -> void:
+		var r := Rect2(Vector2.ZERO, size)
+		ArtUtil.rr(self, r, r.size.y * 0.5, Color(0.12, 0.16, 0.3, 0.22))
+		var col: Color = Palette.MINT_DARK if value >= 0.55 else (Palette.SUN_DEEP if value >= SimConst.STAFF_TIRED_ENERGY * 0.01 else Palette.CORAL)
+		if resting:
+			col = col.lerp(Color.WHITE, 0.25 + 0.2 * sin(_t * 5.0))
+		var w: float = maxf(r.size.y, (r.size.x - 2.0) * clampf(value, 0.0, 1.0))
+		ArtUtil.rr(self, Rect2(1.0, 1.0, w, r.size.y - 2.0), (r.size.y - 2.0) * 0.5, col)
+		ArtUtil.rr(self, Rect2(2.0, 1.6, maxf(w - 2.0, 0.0), 2.0), 1.0, Color(1, 1, 1, 0.35))
+
+
 class _StaffCard extends PanelContainer:
 	signal clicked(id: int)
 	signal double_clicked(id: int)
@@ -94,6 +147,8 @@ class _StaffCard extends PanelContainer:
 	var portrait: BeanPortrait
 	var role_label: Label
 	var state_label: Label
+	var energy_bar: _EnergyBar
+	var badge: _RoleBadge
 	var selected: bool = false
 	var _sb_norm: StyleBoxFlat
 	var _sb_sel: StyleBoxFlat
@@ -113,8 +168,11 @@ class _StaffCard extends PanelContainer:
 		portrait = BeanPortrait.new()
 		portrait.staff_role = role
 		portrait.portrait_size = 70.0
-		portrait.plate_color = Color("CDEFFB") if role == &"janitor" else Color("FFE3A8")
+		portrait.plate_color = Palette.role_plate(role)
 		portrait.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		badge = _RoleBadge.new(role)
+		badge.position = Vector2(-4, -2)
+		portrait.add_child(badge)
 		v.add_child(portrait)
 		role_label = Label.new()
 		role_label.text = role_name
@@ -130,6 +188,9 @@ class _StaffCard extends PanelContainer:
 		state_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		state_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		v.add_child(state_label)
+		energy_bar = _EnergyBar.new()
+		energy_bar.visible = false
+		v.add_child(energy_bar)
 		add_child(v)
 		mouse_entered.connect(func() -> void: hovered.emit(staff_id, true))
 		mouse_exited.connect(func() -> void: hovered.emit(staff_id, false))
@@ -139,8 +200,9 @@ class _StaffCard extends PanelContainer:
 	func set_density(d: int) -> void:
 		portrait.portrait_size = [70.0, 58.0, 48.0][d]
 		custom_minimum_size = Vector2([112, 96, 82][d], 0)
-		role_label.add_theme_font_size_override("font_size", [19, 17, 15][d])
+		role_label.add_theme_font_size_override("font_size", [19, 17, 14][d])
 		state_label.add_theme_font_size_override("font_size", [16, 15, 13][d])
+		badge.scale = Vector2.ONE * [1.0, 0.9, 0.78][d]
 
 	func set_selected(s: bool) -> void:
 		if s == selected:
@@ -181,9 +243,18 @@ func setup(p_level: LevelDef, p_world: SimWorld, p_ctl: VoyageController, p_rend
 	_rating_disp = world.rating()
 	world.event_started.connect(_on_event_started)
 	world.money_changed.connect(_on_money_changed)
+	world.vip_boarded.connect(_on_vip_boarded)
+	world.vip_verdict.connect(_on_vip_verdict)
 	alerts.setup(world, renderer)
 	alerts.focus_requested.connect(func(p: Vector2) -> void: focus_requested.emit(p))
 	_sync_roster()
+
+
+## The Quick refit at a port stop takes over the bottom of the screen: the crew / alert bar hides and the speed buttons rest.
+func set_refit_mode(on: bool) -> void:
+	bottom_bar.visible = not on
+	for b in speed_buttons:
+		b.disabled = on
 
 
 func _compute_thresholds() -> void:
@@ -264,23 +335,30 @@ func _build_bottom() -> void:
 	_crew_label.theme_type_variation = &"OnDarkSmall"
 	_crew_label.text = "Crew"
 	hire.add_child(_crew_label)
-	for role in [&"janitor", &"mechanic"]:
-		var b: Button = UIKit.secondary_button("") if role == &"janitor" else UIKit.sun_button("")
-		b.custom_minimum_size = Vector2(222, 52)
-		b.add_theme_font_size_override("font_size", 20)
+	var roles: Array[StaffDef] = _hire_roles()
+	var grid := GridContainer.new()
+	grid.columns = 3 if roles.size() >= 5 else 2
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	for def in roles:
+		var role: StringName = def.id
+		var b: Button = UIKit.sun_button("") if role == &"mechanic" else UIKit.secondary_button("")
+		b.custom_minimum_size = Vector2(100 if roles.size() >= 5 else 108, 46)
+		b.add_theme_font_size_override("font_size", 19)
 		var iv := IconView.new()
-		iv.icon = &"mop" if role == &"janitor" else &"wrench"
+		iv.icon = IconArt.role_icon(role)
 		iv.icon_size = 28.0
 		iv.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
-		iv.offset_left = 14
-		iv.offset_top = -17
-		iv.offset_right = 42
-		iv.offset_bottom = 11
+		iv.offset_left = 8
+		iv.offset_top = -16
+		iv.offset_right = 36
+		iv.offset_bottom = 12
 		b.add_child(iv)
 		var rr: StringName = role
 		b.pressed.connect(func() -> void: _on_hire(rr))
-		hire.add_child(b)
+		grid.add_child(b)
 		_hire_buttons[role] = b
+	hire.add_child(grid)
 	row.add_child(hire)
 	row.add_child(UIKit.h_spacer())
 	row.add_child(_build_goals_card())
@@ -400,9 +478,45 @@ func _on_money_changed(_m: int, delta: int, reason: StringName) -> void:
 		_pop(money_pill, 0.94)
 
 
+## Roles offered for this level (unlock level + destination), in display order.
+func _hire_roles() -> Array[StaffDef]:
+	return ContentStore.staff_available(level.campaign_index, level.destination)
+
+
 func _on_hire(role: StringName) -> void:
 	if world.hire_staff_mid_voyage(role):
 		_sync_roster()
+
+
+## One-line brief for each VIP kind (arrival pill, alert).
+static func vip_brief(kind: StringName) -> String:
+	match kind:
+		VipSim.CRITIC: return "Quick, clean food service impresses him"
+		VipSim.CELEBRITY: return "Impatient: keep the fun rooms free of queues"
+		VipSim.INSPECTOR: return "Strolls every deck: clean up before he passes"
+	return ""
+
+
+func _on_vip_boarded(_gid: int, kind: StringName) -> void:
+	var origin := Vector2(24.0, TOP_H + 14.0 + 50.0)
+	Banner.show_compact(self, "%s aboard!" % VipSim.kind_label(kind), vip_brief(kind), kind, Palette.vip_color(kind), 3.2, origin)
+
+
+func _on_vip_verdict(_gid: int, kind: StringName, grade: StringName) -> void:
+	var pay: int = VipSim.pay_for(grade)
+	var title: String = "%s: %s review" % [VipSim.kind_label(kind), VipSim.grade_label(grade).to_lower()]
+	var sub: String = "A fine review, nothing more"
+	var col: Color = Palette.TEAL_DARK
+	var icon: StringName = kind
+	if grade == VipSim.GREAT:
+		sub = "Glowing! +$%d" % pay
+		col = Palette.MINT_DARK
+		icon = &"vip"
+	elif grade == VipSim.BAD:
+		sub = "Ouch! -$%d and the neighbours are grumpy" % -pay
+		col = Palette.CORAL_DARK
+		icon = &"angry"
+	Banner.show_compact(self, title, sub, icon, col, 3.6, Vector2(24.0, TOP_H + 14.0 + 50.0))
 
 
 const _GOOD_EVENTS: Array[StringName] = [&"film_night", &"pool_party", &"captains_dinner", &"northern_lights"]
@@ -414,6 +528,9 @@ func _on_event_started(id: StringName) -> void:
 		return
 	var col: Color = Palette.TEAL_DARK if id in _GOOD_EVENTS else (Palette.LILAC_DARK if id == &"haunting" else Palette.CORAL_DARK)
 	var icon: StringName = &"ghost" if id == &"haunting" else (&"sick" if id == &"food_poisoning" else (&"breakdown" if id == &"power_surge" else &"event"))
+	if id == &"storm":
+		col = Color("52638C")
+		icon = &"storm"
 	# compact pill under the top bar (top-left sky area), then it shrinks into the event chip
 	_pill_pending[id] = true
 	var pill: Control = Banner.show_compact(self, def.display_name, def.description, icon, col, 2.5,
@@ -496,10 +613,22 @@ func _on_card_double_clicked(id: int) -> void:
 func _state_text(s: StaffMember) -> String:
 	match s.state:
 		&"work":
-			return "Cleaning" if s.work_kind == &"mess" else "Repairing"
+			match s.work_kind:
+				&"mess": return "Cleaning"
+				&"sick": return "Treating"
+				&"ghost": return "Banishing"
+			return "Repairing"
 		&"walk":
-			return "On the way"
-	return "Idle"
+			return "To bunk" if s.goal == &"rest" else "On the way"
+		&"perform":
+			return "Juggling"
+		&"station":
+			return "Cooking"
+		&"rest":
+			return "Resting"
+		&"nap":
+			return "Napping"
+	return "Tired" if s.is_tired() else "Idle"
 
 
 # =================================================================================================
@@ -577,7 +706,20 @@ func _slow_update() -> void:
 		var c: _StaffCard = _cards.get(s.id)
 		if c != null:
 			c.state_label.text = _state_text(s)
-			c.state_label.add_theme_color_override("font_color", Palette.MINT_DARK if s.state == &"work" else (Palette.TEAL_DARK if s.state == &"walk" else UITheme.TEXT_MUTED))
+			var scol: Color = UITheme.TEXT_MUTED
+			match s.state:
+				&"work", &"perform", &"station":
+					scol = Palette.MINT_DARK
+				&"walk":
+					scol = Palette.TEAL_DARK
+				&"rest", &"nap":
+					scol = Palette.LILAC_DARK
+				_:
+					if s.is_tired():
+						scol = Palette.CORAL
+			c.state_label.add_theme_color_override("font_color", scol)
+			c.energy_bar.visible = s.fatigue_on
+			c.energy_bar.set_value(s.energy_frac(), s.is_resting())
 			c.set_selected(input != null and input.selected_staff_id == s.id)
 	var maxs: int = world.grid.hull.max_staff
 	_crew_label.text = "Crew %d / %d" % [world.staff.size(), maxs]
@@ -585,20 +727,54 @@ func _slow_update() -> void:
 		var b: Button = _hire_buttons[role]
 		var cost: int = world.mid_voyage_hire_cost(role)
 		var nm: String = _role_name(role)
-		b.visible = not (world.staff.size() >= maxs and role != &"janitor")   # one "Crew full" button is plenty
+		var hd: StaffDef = ContentStore.staff_role(role)
+		b.text = "      %s" % fmt_money(cost)
 		if world.staff.size() >= maxs:
-			b.text = "      Crew full"
 			b.disabled = true
-			b.tooltip_text = "Your ship can only carry %d crew." % maxs
+			b.tooltip_text = "Crew full: your ship can only carry %d crew." % maxs
 		elif world.money < cost:
-			b.text = "      %s  (need %s)" % [nm, fmt_money(cost)]
 			b.disabled = true
-			b.tooltip_text = "Not enough money."
+			b.tooltip_text = "%s: need %s (1.5x wage)." % [nm, fmt_money(cost)]
 		else:
-			b.text = "      Hire %s  %s" % [nm, fmt_money(cost)]
 			b.disabled = false
-			b.tooltip_text = "Hire a %s now for %s (1.5x wage)." % [nm.to_lower(), fmt_money(cost)]
+			b.tooltip_text = "Hire a %s now for %s (1.5x wage). %s." % [nm.to_lower(), fmt_money(cost), hd.description if hd != null else ""]
 	_update_chips()
+	_update_vip_chips()
+
+
+## One pill per VIP whose review is still open: kind icon, name, live progress ("1/2 meals", "42s left", "3 spotted").
+func _update_vip_chips() -> void:
+	for v in world.vip_sim.members:
+		var open: bool = v.vip_grade == &""
+		var chip: Dictionary = _vip_chips.get(v.id, {})
+		if open and chip.is_empty():
+			var p := PanelContainer.new()
+			p.theme_type_variation = &"PillPanel"
+			p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var hb := UIKit.hbox(8)
+			var iv := IconView.new()
+			iv.icon = v.vip_kind
+			iv.icon_size = 26.0
+			hb.add_child(iv)
+			var nl := Label.new()
+			nl.theme_type_variation = &"PillLabel"
+			nl.text = VipSim.kind_label(v.vip_kind)
+			hb.add_child(nl)
+			var tl := Label.new()
+			tl.theme_type_variation = &"PillLabel"
+			tl.add_theme_color_override("font_color", Palette.VIP_GOLD)
+			hb.add_child(tl)
+			p.add_child(hb)
+			_chips.add_child(p)
+			UIKit.tween_pop(p)
+			chip = {"node": p, "label": tl}
+			_vip_chips[v.id] = chip
+		if open:
+			var m: Dictionary = world.vip_sim.meter(world, v)
+			(chip["label"] as Label).text = String(m["caption"])
+		elif not chip.is_empty():
+			(chip["node"] as Node).queue_free()
+			_vip_chips.erase(v.id)
 
 
 func _update_chips() -> void:
@@ -615,7 +791,7 @@ func _update_chips() -> void:
 			p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			var hb := UIKit.hbox(8)
 			var iv := IconView.new()
-			iv.icon = &"event"
+			iv.icon = &"storm" if id == &"storm" else &"event"
 			iv.icon_size = 26.0
 			iv.animate = true
 			hb.add_child(iv)
@@ -722,6 +898,8 @@ func _guest_intent(g: Guest) -> String:
 		return "Slipped on a spill!"
 	if g.sick:
 		prefix = "Sick. "
+	elif g.seasick:
+		prefix = "Seasick. "
 	match g.state:
 		&"boarding":
 			return prefix + "Just came aboard"
@@ -744,6 +922,8 @@ func _guest_intent(g: Guest) -> String:
 			return prefix + "Riding the lift"
 		&"storm_off":
 			return "Storming off the ship!"
+		&"inspect":
+			return "Inspecting every deck"
 	return prefix + "Aboard"
 
 
@@ -756,14 +936,43 @@ func _guest_model(g: Guest) -> Dictionary:
 	var mood_icon: StringName = &"smile" if sat >= 65.0 else (&"meh" if sat >= 35.0 else &"frown")
 	if g.sick:
 		mood_icon = &"sick"
+	elif g.seasick:
+		mood_icon = &"seasick"
 	var bars: Array = [{"icon": mood_icon, "label": "%d" % int(sat), "value": sat / 100.0, "color": _need_color(sat)}]
 	var names: Array[StringName] = [&"need_rest", &"need_hunger", &"need_fun", &"need_hygiene"]
 	for i in 4:
 		var v: float = g.nv[i]
 		bars.append({"icon": names[i], "label": "%d" % int(v), "value": v / 100.0, "color": _need_color(v)})
 	var arch: ArchetypeDef = g.archetype
-	return {"title": arch.display_name, "icon": &"guest", "tag": "mood %d%%" % int(sat), "accent": Palette.archetype_color(arch.id),
-			"lines": [_guest_intent(g)], "bars": bars}
+	var lines: Array = [_guest_intent(g)]
+	var model: Dictionary = {"title": arch.display_name, "icon": &"guest", "tag": "mood %d%%" % int(sat), "accent": Palette.archetype_color(arch.id),
+			"lines": lines, "bars": bars}
+	if arch.kid:
+		model["icon"] = &"kid"
+	if g.group_id >= 1 and g.group_id <= world.groups.size():
+		lines.append({"icon": &"family", "text": _group_line(g)})
+	if g.vip_kind != &"":
+		model["title"] = VipSim.kind_label(g.vip_kind)
+		model["icon"] = g.vip_kind
+		model["tag"] = "VIP  -  mood %d%%" % int(sat)
+		model["accent"] = Palette.vip_color(g.vip_kind)
+		var m: Dictionary = world.vip_sim.meter(world, g)
+		model["review"] = {"value": float(m["value"]), "caption": String(m["caption"]), "detail": String(m["detail"]), "grade": g.vip_grade}
+	return model
+
+
+## "Family of 3, together" / "Couple, split up: no shared cabin" for the guest tooltip.
+func _group_line(g: Guest) -> String:
+	var grp: GuestGroup = world.groups[g.group_id - 1]
+	var what: String = "Family of %d" % grp.size if grp.kind == GuestGroup.FAMILY else "Couple"
+	var role: String = ""
+	if g.group_slot == 0:
+		role = ", leads the way"
+	elif g.archetype.kid:
+		role = ", sticks with the grown-ups"
+	if grp.split:
+		return "%s, split up (no shared cabin)%s" % [what, role]
+	return "%s, share a cabin%s" % [what, role]
 
 
 func _room_model(r: RoomRuntime) -> Dictionary:
@@ -776,9 +985,20 @@ func _room_model(r: RoomRuntime) -> Dictionary:
 	var hint: String = ""
 	if d.id == &"cabin":
 		lines.append("Sleepers %d / %d  (%d napping)" % [r.sleepers.size(), r.capacity(), r.users.size()])
+	elif d.id == &"crew_quarters":
+		lines.append("Bunks %d / %d taken" % [r.users.size(), r.capacity()])
+		lines.append("Tired crew recharge here (x%.2f speed)" % d.speed_at(r.tier))
+		hint = "Select a crew member, then click here to send them to bed"
 	else:
 		lines.append("Using %d / %d" % [r.users.size(), r.capacity()])
 		lines.append("Queue: %d waiting" % r.queue.size())
+	if d.adult_mult != 1.0:
+		lines.append("Built for kids: grown-ups barely bother")
+	if r.chef_on:
+		lines.append("A chef is cooking here: faster, tidier")
+	if r.closed:
+		lines.append("CLOSED: too stormy on the top deck")
+		hint = "It reopens when the storm passes"
 	if r.broken:
 		lines.append("BROKEN  (%d%% repaired)" % int(r.repair_progress * 100.0))
 		hint = "Press and hold to repair!"
@@ -793,14 +1013,52 @@ func _room_model(r: RoomRuntime) -> Dictionary:
 func _staff_model(s: StaffMember) -> Dictionary:
 	if s == null:
 		return {}
-	var job: String = "Idle. Waiting for a job"
-	if s.state == &"work":
-		job = "Cleaning a spill" if s.work_kind == &"mess" else "Repairing the %s" % _room_name(s.work_target_id)
-	elif s.state == &"walk" and s.job != null:
-		job = "Heading to a spill" if s.job.kind == &"mess" else "Heading to the %s" % _room_name(s.job.target_id)
-	var role: String = _role_name(s.role)
-	return {"title": role, "icon": &"mop" if s.role == &"janitor" else &"wrench", "accent": Palette.TEAL,
-			"lines": [job], "hint": "Click, then click a %s" % ("spill" if s.role == &"janitor" else "broken room")}
+	var job: String = "Idle. Waiting for a job" if not s.def.is_aura() else "Idle. Looking for a crowd" if s.role == &"entertainer" else "Idle. Heading for a kitchen"
+	match s.state:
+		&"work":
+			match s.work_kind:
+				&"mess": job = "Cleaning a spill"
+				&"sick": job = "Treating a sick guest"
+				&"ghost": job = "Banishing a ghost"
+				_: job = "Repairing the %s" % _room_name(s.work_target_id)
+		&"walk":
+			if s.goal == &"rest":
+				job = "Heading for a bunk"
+			elif s.goal == &"perform" or s.goal == &"station":
+				job = "Heading to the %s" % _room_name(s.aura_uid)
+			elif s.job != null:
+				match s.job.kind:
+					&"mess": job = "Heading to a spill"
+					&"sick": job = "Rushing to a sick guest"
+					&"ghost": job = "Chasing a ghost"
+					_: job = "Heading to the %s" % _room_name(s.job.target_id)
+		&"perform":
+			job = "Juggling for the %s queue" % _room_name(s.aura_uid)
+		&"station":
+			job = "Cooking at the %s" % _room_name(s.aura_uid)
+		&"rest":
+			job = "Sleeping in the crew quarters"
+		&"nap":
+			job = "Napping on the spot"
+	var target: String = "a spill"
+	match s.role:
+		&"mechanic": target = "a broken room"
+		&"medic": target = "a sick guest"
+		&"warden": target = "a ghost"
+		&"entertainer": target = "a room with a queue"
+		&"chef": target = "the buffet or restaurant"
+	var hint: String = "Click, then click %s" % target
+	var bars: Array = []
+	if s.fatigue_on:
+		var ev: float = s.energy_frac()
+		bars.append({"icon": &"energy", "label": "%d%%" % int(round(s.energy)), "value": ev, "color": Palette.MINT_DARK if ev >= 0.55 else (Palette.SUN_DEEP if ev >= 0.3 else Palette.CORAL)})
+		if not world.room_sim.crew_rooms.is_empty():
+			hint += ", or the crew quarters to rest"
+	var lines: Array = [job]
+	if s.is_tired():
+		lines.append("Tired: slower on the job")
+	return {"title": _role_name(s.role), "icon": IconArt.role_icon(s.role), "accent": Palette.role_color(s.role),
+			"lines": lines, "bars": bars, "hint": hint}
 
 
 func _mess_model(m: Mess) -> Dictionary:

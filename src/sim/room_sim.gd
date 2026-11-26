@@ -8,7 +8,11 @@ var by_uid: Dictionary = {}
 var service_rooms: Array[RoomRuntime] = []
 var cabins_by_distance: Array[RoomRuntime] = []
 var elevators: Array[RoomRuntime] = []
+## Crew quarters (staff bunks; never guest-facing, so not in service_rooms).
+var crew_rooms: Array[RoomRuntime] = []
 var _appeal_timer: float = 0.0
+## Maintenance Contract perk: multiplies every room's breakdown health (SimWorld.apply_perks).
+var health_perk_mult: float = 1.0
 
 
 func setup(w: SimWorld) -> void:
@@ -17,40 +21,58 @@ func setup(w: SimWorld) -> void:
 	service_rooms = []
 	cabins_by_distance = []
 	elevators = []
-	var top: int = w.grid.hull.decks - 1
+	crew_rooms = []
 	for p in w.grid.layout.rooms:
-		var r := RoomRuntime.new()
-		r.uid = p.uid
-		r.def = p.def
-		r.deck = p.deck
-		r.x = p.x
-		r.width = p.def.width
-		r.tier = p.tier
-		r.locked = p.locked
-		r.door_x = p.door_x()
-		r.top_deck = p.deck == top and not p.is_transport()
-		r.cap = p.def.capacity_at(p.tier)
-		r.breakable = p.def.breakdown_time > 0.0
-		r.svc = p.def.service_time_at(p.tier)
-		r.door_node = w.grid.graph.node(p.deck, int(r.door_x))
-		for need in p.def.satisfies:
-			var ni: int = SimConst.NEEDS.find(StringName(need))
-			if ni >= 0:
-				r.need_idx.append(ni)
-				r.need_amt.append(float(p.def.satisfies[need]))
-		r.resize_slots()
-		if p.def.breakdown_time > 0.0:
-			r.max_health = p.def.health_at(p.tier) * w.level.health_mult
-			r.health = r.max_health * w.rng.randf_range(0.55, 1.5)  # wide spread so rooms do not all fail together
-		rooms.append(r)
-		by_uid[r.uid] = r
-		if p.def.is_service_room():
-			service_rooms.append(r)
-		if p.def.id == &"cabin":
-			cabins_by_distance.append(r)
-		if p.is_elevator():
-			elevators.append(r)
-	# Cabins are filled in order of walking distance from the gangway.
+		_register(_make_runtime(w, p), p)
+	_sort_cabins(w)
+	refresh_appeal(w)
+
+
+## The runtime of a placed room (health rolled from the sim rng, so call it in placement order).
+func _make_runtime(w: SimWorld, p: PlacedRoom) -> RoomRuntime:
+	var top: int = w.grid.hull.decks - 1
+	var r := RoomRuntime.new()
+	r.uid = p.uid
+	r.def = p.def
+	r.deck = p.deck
+	r.x = p.x
+	r.width = p.def.width
+	r.tier = p.tier
+	r.locked = p.locked
+	r.door_x = p.door_x()
+	r.top_deck = p.deck == top and not p.is_transport()
+	r.cap = p.def.capacity_at(p.tier)
+	r.breakable = p.def.breakdown_time > 0.0
+	r.svc = p.def.service_time_at(p.tier)
+	r.door_node = w.grid.graph.node(p.deck, int(r.door_x))
+	r.adult_mult = p.def.adult_mult
+	for need in p.def.satisfies:
+		var ni: int = SimConst.NEEDS.find(StringName(need))
+		if ni >= 0:
+			r.need_idx.append(ni)
+			r.need_amt.append(float(p.def.satisfies[need]))
+	r.resize_slots()
+	if p.def.breakdown_time > 0.0:
+		r.max_health = p.def.health_at(p.tier) * w.level.health_mult * health_perk_mult
+		r.health = r.max_health * w.rng.randf_range(0.55, 1.5)  # wide spread so rooms do not all fail together
+	return r
+
+
+func _register(r: RoomRuntime, p: PlacedRoom) -> void:
+	rooms.append(r)
+	by_uid[r.uid] = r
+	if p.def.is_service_room():
+		service_rooms.append(r)
+	if p.def.id == &"cabin":
+		cabins_by_distance.append(r)
+	if p.is_elevator():
+		elevators.append(r)
+	if p.def.id == &"crew_quarters":
+		crew_rooms.append(r)
+
+
+## Cabins are filled in order of walking distance from the gangway.
+func _sort_cabins(w: SimWorld) -> void:
 	var g: WalkGraph = w.grid.graph
 	var gw: int = g.node(w.grid.hull.gangway_deck, 0)
 	var cost_of: Dictionary = {}
@@ -62,24 +84,99 @@ func setup(w: SimWorld) -> void:
 		if ca != cb:
 			return ca < cb
 		return a.uid < b.uid)
-	refresh_appeal(w)
+
+
+# ---------------------------------------------------------------------------------------------
+# Quick refit at a port stop (docs/SPEC.md §13.8)
+# ---------------------------------------------------------------------------------------------
+## Runtime for a room just added to the layout (the walk graph has been rebuilt already). Homeless guests move into new beds.
+func add_runtime(w: SimWorld, p: PlacedRoom) -> RoomRuntime:
+	var r: RoomRuntime = _make_runtime(w, p)
+	_register(r, p)
+	if p.def.id == &"cabin" or p.is_transport():
+		_sort_cabins(w)   # a new staircase can change which cabin is nearest
+	if p.def.is_service_room():
+		refresh_room_appeal(w, r)
+	if p.def.id == &"cabin":
+		fill_homeless(w)
+	return r
+
+
+## Brings the runtime of an upgraded room up to its new tier (capacity, speed, sturdier parts).
+func upgrade_runtime(w: SimWorld, r: RoomRuntime, tier: int) -> void:
+	r.tier = tier
+	r.cap = r.def.capacity_at(tier)
+	r.svc = r.def.service_time_at(tier)
+	r.resize_slots()
+	if r.breakable:
+		var old_max: float = r.max_health
+		r.max_health = r.def.health_at(tier) * w.level.health_mult * health_perk_mult
+		if not r.broken:
+			r.health = minf(r.health + (r.max_health - old_max), r.max_health)
+	if r.def.id == &"cabin":
+		fill_homeless(w)
+
+
+## Guests without a bed take a free one (after a cabin was built or upgraded).
+func fill_homeless(w: SimWorld) -> void:
+	for g in w.guests:
+		if g.cabin_uid < 0 and g.is_aboard():
+			assign_cabin(g)
+
+
+## A guest leaves the ship for good: their bed is free again.
+func release_bed(g: Guest) -> void:
+	var c: RoomRuntime = room(g.cabin_uid)
+	if c != null:
+		c.sleepers.erase(g.id)
+
+
+## Storm: shuts (or reopens) every top-deck room. Closing sends everybody using, queueing for or heading to those rooms away
+## without any penalty.
+func set_top_closed(w: SimWorld, closed: bool) -> void:
+	for r in service_rooms:
+		if not r.top_deck or r.closed == closed:
+			continue
+		r.closed = closed
+		if closed:
+			w.guest_sim.evacuate_room(w, r)
 
 
 func room(uid: int) -> RoomRuntime:
 	return by_uid.get(uid) as RoomRuntime
 
 
+## Sets the durability perk multiplier and rescales the health rooms already rolled (so the rng stream is untouched).
+func set_health_perk_mult(m: float) -> void:
+	var ratio: float = m / maxf(health_perk_mult, 0.0001)
+	health_perk_mult = m
+	if is_equal_approx(ratio, 1.0):
+		return
+	for r in rooms:
+		if r.breakable:
+			r.max_health *= ratio
+			if not r.broken:
+				r.health *= ratio
+
+
 func refresh_appeal(w: SimWorld) -> void:
-	var dest: DestinationDef = w.destination
 	for r in service_rooms:
-		var a: float = r.def.appeal
-		if dest != null:
-			if r.def.id == &"pool":
-				a *= dest.pool_appeal_mult
-			if r.top_deck:
-				a *= dest.top_deck_appeal_mult
-		a *= w.events.appeal_mult(r)
-		r.appeal_now = a
+		refresh_room_appeal(w, r)
+
+
+## Recomputes one room's appeal (event / destination multipliers, plus x1.5 while a celebrity VIP is using it).
+func refresh_room_appeal(w: SimWorld, r: RoomRuntime) -> void:
+	var dest: DestinationDef = w.destination
+	var a: float = r.def.appeal
+	if dest != null:
+		if r.def.id == &"pool":
+			a *= dest.pool_appeal_mult
+		if r.top_deck:
+			a *= dest.top_deck_appeal_mult
+	a *= w.events.appeal_mult(r)
+	if r.celeb_users > 0:
+		a *= SimConst.CELEB_APPEAL_MULT
+	r.appeal_now = a
 
 
 func broken_on_deck(deck: int) -> int:
@@ -105,8 +202,30 @@ func total_queue() -> int:
 	return n
 
 
-## Assigns a cabin bed (fills cabins in order of distance to the gangway).
-func assign_cabin(g: Guest) -> void:
+## Books the shared cabin for a boarding group: the nearest cabin with enough free beds for all of them (the beds are held
+## until each member boards). No such cabin: the group splits up (`group.split`, each member then boards alone).
+func plan_group_cabin(group: GuestGroup) -> void:
+	group.cabin_uid = -1
+	group.split = true
+	for c in cabins_by_distance:
+		if c.free_beds() >= group.size:
+			c.reserved += group.size
+			group.cabin_uid = c.uid
+			group.split = false
+			return
+
+
+## Assigns a cabin bed (fills cabins in order of distance to the gangway). A member of a group with a booked cabin takes
+## one of the beds held for it.
+func assign_cabin(g: Guest, group: GuestGroup = null) -> void:
+	if group != null and group.cabin_uid >= 0:
+		var gc: RoomRuntime = room(group.cabin_uid)
+		if gc != null and gc.reserved > 0:
+			gc.reserved -= 1
+			gc.sleepers.append(g.id)
+			g.cabin_uid = gc.uid
+			g.bed_slot = gc.sleepers.size() - 1
+			return
 	for c in cabins_by_distance:
 		if c.free_beds() > 0:
 			c.sleepers.append(g.id)
@@ -128,10 +247,12 @@ func tick(w: SimWorld, dt: float) -> void:
 			r.health -= dt
 			if r.health <= 0.0:
 				_try_break(w, r)
-		if not r.queue.is_empty() and not r.broken:
+		if not r.queue.is_empty() and not r.broken and not r.closed:
 			advance_queue(w, r)
 		var target: float = float(r.users.size()) / float(maxi(r.cap, 1))
 		r.busy_ratio += (target - r.busy_ratio) * k
+	for q in crew_rooms:
+		q.busy_ratio += (float(q.users.size()) / float(maxi(q.cap, 1)) - q.busy_ratio) * k
 	for e in elevators:
 		e.busy_ratio = float(w.transit.riders_in(e.x)) / float(SimConst.ELEVATOR_CAPACITY)
 
@@ -209,7 +330,7 @@ func add_repair(w: SimWorld, r: RoomRuntime, amount: float) -> bool:
 func repair_room(w: SimWorld, r: RoomRuntime) -> void:
 	r.broken = false
 	r.repair_progress = 0.0
-	r.max_health = r.def.health_at(r.tier) * w.level.health_mult
+	r.max_health = r.def.health_at(r.tier) * w.level.health_mult * health_perk_mult
 	r.health = r.max_health * w.rng.randf_range(0.75, 1.25)
 	w.metrics["repairs"] += 1
 	w.staff_sim.on_target_resolved(w, &"repair", r.uid)

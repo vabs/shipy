@@ -28,7 +28,10 @@ func bind(w: SimWorld) -> void:
 	w.guest_slipped.connect(_on_slipped)
 	w.guest_cured.connect(_on_cured)
 	w.guest_got_sick.connect(_on_sick)
+	w.guest_got_seasick.connect(_on_seasick)
 	w.money_changed.connect(_on_money)
+	w.vip_boarded.connect(_on_vip_boarded)
+	w.vip_verdict.connect(_on_vip_verdict)
 	for m in w.messes:
 		_mess_last[m.id] = SimConst.to_px(m.x, float(m.deck))
 
@@ -169,10 +172,58 @@ func _on_sick(gid: int) -> void:
 		spawn(&"puff", p + Vector2(0, -8), 0.5, {"small": true})
 
 
+## A guest turns queasy in the storm: a few teal bubbles and a little "blub".
+func _on_seasick(gid: int) -> void:
+	if _count(&"queasy") >= 6:
+		return
+	var p: Vector2 = r.local_pos_of(&"guest", gid)
+	if p != Vector2.INF:
+		spawn(&"queasy", p + Vector2(0, -8), 0.8)
+
+
 func _on_money(_money: int, delta: int, reason: StringName) -> void:
 	if reason == &"tickets" and delta > 0:
 		var gp: Vector2 = SimConst.to_px(0.6, float(_world.grid.hull.gangway_deck)) + Vector2(10, -52)
 		float_text(gp, delta, Palette.MINT)
+
+
+## A VIP steps off the gangway: gold flash and stars.
+func _on_vip_boarded(gid: int, _kind: StringName) -> void:
+	var p: Vector2 = r.local_pos_of(&"guest", gid)
+	if p == Vector2.INF:
+		p = SimConst.to_px(0.6, float(_world.grid.hull.gangway_deck)) + Vector2(10, -24)
+	spawn(&"popring", p + Vector2(0, -4), 0.7, {"color": Palette.VIP_GOLD_DARK, "r": 24.0})
+	spawn(&"starburst", p + Vector2(0, -22), 0.95, {"color": Palette.VIP_GOLD})
+	spawn(&"sparkle", p + Vector2(-12, -18), 0.9, {"color": Color("FFF1B8")})
+	spawn(&"sparkle", p + Vector2(12, -30), 1.0, {"color": Palette.VIP_GOLD})
+
+
+## The verdict floats above the VIP as a plate (kind, grade, money) with a grade-specific burst.
+func _on_vip_verdict(gid: int, kind: StringName, grade: StringName) -> void:
+	var p: Vector2 = r.local_pos_of(&"guest", gid)
+	if p == Vector2.INF:
+		return
+	var pay: int = VipSim.pay_for(grade)
+	var sub: String = ""
+	if pay > 0:
+		sub = "+$%d" % pay
+	elif pay < 0:
+		sub = "-$%d" % -pay
+	var col: Color = Palette.MINT_DARK if grade == VipSim.GREAT else (Palette.CORAL_DARK if grade == VipSim.BAD else Palette.TEAL_DARK)
+	spawn(&"stamp", p + Vector2(0, -34), 3.0, {"title": VipSim.kind_label(kind), "grade": grade, "sub": sub, "color": col})
+	match grade:
+		VipSim.GREAT:
+			spawn(&"starburst", p + Vector2(0, -20), 1.0, {"color": Palette.VIP_GOLD})
+			spawn(&"sparkle", p + Vector2(-14, -22), 0.9, {"color": Color("FFF1B8")})
+			spawn(&"sparkle", p + Vector2(14, -8), 1.0, {"color": Palette.MINT})
+			spawn(&"hearts", p + Vector2(0, -16), 1.1)
+		VipSim.BAD:
+			spawn(&"puff", p + Vector2(0, -12), 0.7)
+			spawn(&"spark", p + Vector2(-8, -18), 0.55)
+			if camera != null:
+				camera.shake(1.6, 0.2)
+		_:
+			spawn(&"popring", p + Vector2(0, -8), 0.6, {"color": Palette.TEAL_DARK, "r": 18.0})
 
 
 # ---- drawing ----------------------------------------------------------------------------------
@@ -213,10 +264,17 @@ func _draw() -> void:
 					U.xf_end(self)
 				else:
 					FxArt.draw_puff(self, p, k)
+			&"queasy":
+				FxArt.draw_queasy(self, p, k)
 			&"sparkle":
 				FxArt.draw_sparkle(self, p, k, e["data"]["color"])
 			&"spark":
 				FxArt.draw_spark(self, p, k)
+			&"stamp":
+				var sk: float = clampf(r.zoom_k, 0.6, 1.15) if r != null else 1.0
+				var sp: Vector2 = _clamp_to_play_area(p, sk)
+				var d: Dictionary = e["data"]
+				FxArt.draw_vip_stamp(self, sp, k, String(d["title"]), d["grade"], String(d["sub"]), d["color"], sk)
 
 
 ## Keeps floating texts (money, "Fixed!") on screen and out from under the top / bottom HUD bars: `p` is a

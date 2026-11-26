@@ -8,26 +8,26 @@ id = &"underworld_6"
 index = 6
 campaign_index = 18
 display_name = "Crown of Shadows"
-blurb = "The final voyage. Every problem at once, all the way down."
+blurb = "The final voyage. Every problem at once, with a last stop at Charon's Wharf."
 destination = &"underworld"
 hull = &"large"
 budget = 7400
 ticket_price = 36
 duration = 300.0
 waves = Array[Dictionary]([{
-"count": 16,
+"count": 14,
 "t": 0.0
 }, {
-"count": 12,
+"count": 11,
 "t": 42.0
 }, {
-"count": 11,
+"count": 10,
 "t": 90.0
 }, {
-"count": 10,
+"count": 9,
 "t": 138.0
 }, {
-"count": 7,
+"count": 5,
 "t": 186.0
 }])
 archetype_weights = {
@@ -58,14 +58,29 @@ scheduled_events = Array[Dictionary]([{
 random_event_interval = 70.0
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 33
+"value": 39
 }, {
 "type": "rating",
-"value": 45
+"value": 56
 }, {
 "type": "served",
-"value": 360
+"value": 350
 }])
-mess_mult = 1.5
-health_mult = 0.66
-decay_mult = 1.08
+mess_mult = 1.29
+health_mult = 0.75
+decay_mult = 1.02
+staff_fatigue = true
+vips = Array[Dictionary]([{
+"kind": &"critic",
+"t": 45.0
+}, {
+"kind": &"celebrity",
+"t": 115.0
+}])
+group_ratio = 0.35
+port_stop = {
+"board": 12,
+"disembark": 0.25,
+"name": "Charon's Wharf",
+"t": 160.0
+}
