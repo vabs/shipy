@@ -1,6 +1,8 @@
 class_name VoyageSelfTest
 extends Node
 ## Interaction self-tests: run with  --scene=level --level=<id> --phase=voyage --selftest=clean|repair|assign|ghost|roster|crew
+## (`flow`: --scene=level --level=<id> --selftest=flow [--lastvoyage=on]: port -> set sail -> results -> retry; with --lastvoyage=on it
+## also checks that the port's "Last voyage" heatmap and toggle are gone once the ship sails and the results' heatmap still opens)
 ## (`crew`: --level=underworld_3 --crew=janitor:1,medic:1,entertainer:1,chef:1,warden:1; real clicks send each new role
 ## to its target and the crew quarters)
 ## The test zooms the camera onto the target (so the zoom/pan AND the ship bob transforms are involved), then
@@ -546,8 +548,11 @@ func _test_flow() -> void:
 	var rooms0: int = screen.port.layout.rooms.size()
 	var port0: PortState = screen.port
 	var in_port: bool = screen.phase == screen.Phase.PORT and screen._port_ui != null
+	# (--lastvoyage=on: the port starts with the "Last voyage" heatmap showing; it must not follow the player to sea)
+	var had_heat: bool = screen._last_toggle != null and screen._heat != null
 	screen._on_set_sail()
 	await _frames(10)
+	var stale_heat: bool = had_heat and (screen._heat != null or screen._last_toggle != null)
 	var voyage: bool = screen.phase == screen.Phase.VOYAGE and screen.world != null and screen.ctl != null
 	if not voyage:
 		_done(false, "no voyage after set sail (in_port=%s)" % str(in_port))
@@ -574,6 +579,15 @@ func _test_flow() -> void:
 	if not results:
 		_done(false, "no results overlay (phase=%d, finished=%s)" % [screen.phase, str(w.finished)])
 		return
+	var heat_ok: bool = not stale_heat
+	if had_heat:
+		# the results' own "Show heatmap" must work (it does nothing while a stale port heatmap still holds the overlay)
+		screen._open_heatmap(w.result.get("report", {}), "Back to results", true)
+		await _frames(2)
+		heat_ok = heat_ok and screen._heat != null
+		screen._close_heatmap(true)
+		await _frames(2)
+		heat_ok = heat_ok and screen._heat == null and screen._results.visible
 	var stars: int = int(w.result.get("stars", -1))
 	var old_screen: Node = screen
 	# this node lives under the screen that Retry frees: move it to the root so the check can finish
@@ -584,7 +598,7 @@ func _test_flow() -> void:
 	await _frames(12)
 	var cur: Node = Router.current
 	var new_ok: bool = cur != old_screen and cur != null and cur.get("phase") == cur.Phase.PORT and cur.port == port0 and cur.port.layout.rooms.size() == rooms0
-	_done(in_port and voyage and results and new_ok, "port=%s voyage=%s results=%s (stars %d, rating %.0f) retry->port with %d rooms kept=%s" % [in_port, voyage, results, stars, float(w.result.get("rating", 0.0)), rooms0, new_ok])
+	_done(in_port and voyage and results and new_ok and heat_ok, "port=%s voyage=%s results=%s (stars %d, rating %.0f) retry->port with %d rooms kept=%s%s" % [in_port, voyage, results, stars, float(w.result.get("rating", 0.0)), rooms0, new_ok, ("; last-voyage heatmap cleared at sea and the results heatmap opens=%s" % str(heat_ok)) if had_heat else ""])
 
 
 ## Elevator: whenever guests ride the lift the rendered car must be at (about) their deck.

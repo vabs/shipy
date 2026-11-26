@@ -40,7 +40,7 @@ static func kind_of(kids_n: int) -> StringName:
 	return FAMILY if kids_n > 0 else COUPLE
 
 
-## What a level's waves bring: {groups, couples, families, kids, grouped (people travelling in groups)}. Exact: it follows
+## What a level's waves (and its port-stop boarding wave) bring: {groups, couples, families, kids, grouped (people travelling in groups)}. Exact: it follows
 ## `plan` wave by wave, exactly as LevelDirector schedules the boarding.
 static func summary(level: LevelDef) -> Dictionary:
 	var couples: int = 0
@@ -48,8 +48,12 @@ static func summary(level: LevelDef) -> Dictionary:
 	var kids: int = 0
 	var grouped: int = 0
 	if level.group_ratio > 0.0:
+		# The level's own waves, then the port stop's boarding wave (LevelDirector.add_wave). `plan` keeps no state between waves.
+		var counts: Array[int] = []
 		for wv in level.waves:
-			var count: int = int(wv.get("count", 0))
+			counts.append(int(wv.get("count", 0)))
+		counts.append(level.port_board())
+		for count in counts:
 			if count < 2:
 				continue
 			for kids_n in plan(count, level.group_ratio):

@@ -27,6 +27,12 @@ func release(col: int) -> void:
 	riders[col] = maxi(int(riders.get(col, 0)) - 1, 0)
 
 
+## Takes `w` out of the waiting line of shaft `col` (it stopped waiting without boarding).
+func dequeue(w: Walker, col: int) -> void:
+	if waiting.has(col):
+		waiting[col].erase(w)
+
+
 ## Boards waiting walkers (front of line first) while the car has room.
 func tick() -> void:
 	for col in waiting:

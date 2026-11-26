@@ -112,6 +112,8 @@ var mutiny_active: bool:
 		return director.mutiny_active
 
 var _room_counts: Dictionary = {}
+## Walkers in the middle of a climb / lift ride when a refit rebuilt the walk graph: re-planned as soon as they step off (see _repath).
+var _repath_later: Array[Walker] = []
 
 
 func _init(lvl: LevelDef, layout: ShipLayout, staff_counts: Dictionary, seed_value: int, money_start: int) -> void:
@@ -187,6 +189,8 @@ func tick(dt: float) -> void:
 	problems.tick(self, dt)
 	staff_sim.tick(self, dt)
 	transit.tick()
+	if not _repath_later.is_empty():
+		_replan_after_hops()
 	var charged: int = economy.tick_upkeep(dt)
 	if charged > 0:
 		money_changed.emit(economy.money, -charged, &"upkeep")
@@ -484,7 +488,7 @@ func cast_off() -> bool:
 
 
 ## Re-plans the route of every walking guest / crew member to the same destination on the (rebuilt) walk graph; anybody in the middle of
-## a climb or an elevator ride finishes it first.
+## a climb or an elevator ride finishes the hop first and is re-planned right after it (`_replan_after_hops`).
 func _repath_walkers() -> void:
 	for g in guests:
 		if g.mode != Guest.GONE:
@@ -495,6 +499,24 @@ func _repath_walkers() -> void:
 
 func _repath(wk: Walker) -> void:
 	var n: int = wk.wp_deck.size()
-	if n == 0 or not wk.has_route() or wk.vertical_busy():
+	if n == 0 or not wk.has_route():
+		return
+	if wk.vertical_busy():
+		if not _repath_later.has(wk):
+			_repath_later.append(wk)
 		return
 	wk.plan_route(grid, wk.wp_deck[n - 1], wk.wp_x[n - 1])
+
+
+## Walkers that were mid-hop at the refit: once they stand on a deck again they take the route the new graph gives them (in the order
+## they were queued, so the outcome stays deterministic).
+func _replan_after_hops() -> void:
+	var still: Array[Walker] = []
+	for wk in _repath_later:
+		if not wk.has_route() or (wk is Guest and (wk as Guest).mode == Guest.GONE):
+			continue
+		if wk.vertical_busy():
+			still.append(wk)
+		else:
+			_repath(wk)
+	_repath_later = still

@@ -28,7 +28,7 @@ func _init() -> void:
 		_t_crew_quarters, _t_roles_misc,
 		_t_vip_content, _t_vip_critic, _t_vip_celebrity, _t_vip_inspector, _t_vip_misc,
 		_t_groups, _t_group_cabins, _t_kids_club, _t_vip_groups_runs,
-		_t_storm, _t_port_stop, _t_refit, _t_autoplayer_refit, _t_campaign_features, _t_hints_v2, _t_performance,
+		_t_storm, _t_port_stop, _t_refit, _t_review_fixes, _t_autoplayer_refit, _t_campaign_features, _t_hints_v2, _t_performance,
 	]
 	for s in suites:
 		s.call()
@@ -4633,6 +4633,248 @@ func _t_port_stop() -> void:
 	_check(not w5.events.is_active(&"storm"), "the storm ends when the ship starts docking")
 	_near(w5.weather_intensity, 0.0, 0.0001, "calm at the quay")
 	_check(w5.port_stop.blocks_storm(w5.time), "no new storm around the stop")
+
+
+## Review fixes around the port stop: the excursion timeout, ailing followers, refit re-planning, the boarding wave's groups.
+func _t_review_fixes() -> void:
+	_section("review fixes: excursion timeout, ailing followers, refit re-plan, boarding groups")
+
+	# --- Walker.abort_travel gives the elevator back (waiting line and car), and leaves a climb on the nearest deck
+	var tr := Transit.new()
+	var wk_wait := Walker.new()
+	wk_wait.set_position(1, 10.5)
+	var wk_ride := Walker.new()
+	wk_ride.set_position(1, 10.5)
+	var wk_climb := Walker.new()
+	wk_climb.set_position(1, 20.5)
+	var gr: ShipGrid = _grid_for(&"arctic_1")
+	gr.place_free(&"elevator", 0, 10)
+	var gr_st: ShipGrid = _grid_for(&"arctic_1")
+	gr_st.place_free(&"stairs", 1, 20)
+	_check(wk_ride.plan_route(gr, 3, 10.5) and wk_wait.plan_route(gr, 3, 10.5) and wk_climb.plan_route(gr_st, 2, 3.0), "routes via the lift and the stairs")
+	wk_ride.step_route(0.1, 2.2, tr, &"walk")
+	_eq(wk_ride.travel_mode, Walker.T_WAIT, "the first walker waits for the lift")
+	wk_ride.travel_t = SimConst.ELEVATOR_WAIT
+	tr.tick()
+	_eq(wk_ride.travel_mode, Walker.T_RIDE, "... and rides")
+	wk_wait.step_route(0.1, 2.2, tr, &"walk")
+	for i in 40:
+		if wk_climb.travel_mode != Walker.T_NONE:
+			break
+		wk_climb.step_route(0.1, 2.2, tr, &"walk")
+	_eq(wk_wait.travel_mode, Walker.T_WAIT, "the second one queues behind")
+	_eq(wk_climb.travel_mode, Walker.T_CLIMB, "the third one climbs")
+	_eq(tr.riders_in(10), 1, "one rider")
+	_eq(tr.waiting_in(10), 1, "one waiting")
+	wk_wait.abort_travel(tr)
+	wk_ride.abort_travel(tr)
+	wk_climb.abort_travel(tr)
+	_eq(tr.riders_in(10), 0, "the car is empty again")
+	_eq(tr.waiting_in(10), 0, "the line is empty again")
+	for wk in [wk_wait, wk_ride, wk_climb]:
+		_check(not wk.vertical_busy(), "an aborted walker is no longer mid-hop")
+		_near(wk.deck_f, float(wk.deck), 0.0001, "and stands on a deck")
+
+	# --- Excursion timeout with guests in the lift line and in the car: the elevator keeps its capacity
+	var lvl: LevelDef = _port_level(&"med_5", {"t": 5.0, "name": "Delos", "disembark": 1.0, "board": 0})
+	var w: SimWorld = _world(&"med_5", [[&"elevator", 0, 10], [&"cabin", 1, 0], [&"cabin", 1, 2], [&"toilets", 1, 4]], {}, 31, lvl)
+	w.refit_manual = true
+	var crowd: Array[Guest] = []
+	for i in 8:
+		var g: Guest = _spawn(w)
+		_park(g, 3, 10.5)
+		crowd.append(g)
+	while w.port_stop.phase != PortStop.EXCURSION and w.time < 30.0:
+		w.tick(SimConst.TICK)
+	_eq(w.port_stop.phase, PortStop.EXCURSION, "the excursion has begun")
+	for i in 80:
+		if w.transit.riders_in(10) > 0 and w.transit.waiting_in(10) > 0:
+			break
+		w.tick(SimConst.TICK)
+	_check(w.transit.riders_in(10) > 0 and w.transit.waiting_in(10) > 0, "guests are in the car and in the line (%d / %d)" % [w.transit.riders_in(10), w.transit.waiting_in(10)])
+	w.port_stop.phase_t = SimConst.EXCURSION_MAX   # time is up
+	w.tick(SimConst.TICK)
+	_eq(w.port_stop.phase, PortStop.READY, "the excursion timed out")
+	_eq(w.transit.riders_in(10), 0, "nobody is left riding in a car they are not in")
+	_eq(w.transit.waiting_in(10), 0, "nobody is left in the line")
+	for g in crowd:
+		_check(g.mode == Guest.GONE and g.excursion and not g.lost and not g.vertical_busy(), "guest %d went ashore (excursion, not lost)" % g.id)
+	_eq(int(w.metrics["excursions"]), 8, "eight excursions counted")
+	_check(w.cast_off(), "cast off")
+	_advance(w, 3.0)
+	_eq(w.transit.riders_in(10), 0, "ghost passengers never board later")
+	var late: Guest = _spawn(w)
+	_park(late, 3, 10.5)
+	late.mode = Guest.WALK
+	late.state = Guest.WALK
+	_check(late.plan_route(w.grid, 1, 0.5), "a late guest plans a route down")
+	for i in int(12.0 / SimConst.TICK):
+		w.tick(SimConst.TICK)
+		if late.deck == 1:
+			break
+	_eq(late.deck, 1, "the elevator still has its full capacity: the late guest rode it")
+
+	# --- ... and a guest caught mid-climb when the time runs out (excursion_pending) is still an excursion: bed freed, counted, not lost
+	var lvl2: LevelDef = _port_level(&"med_5", {"t": 5.0, "name": "Naxos", "disembark": 1.0, "board": 0})
+	var w2: SimWorld = _world(&"med_5", [[&"stairs", 1, 20], [&"cabin", 1, 0]], {}, 32, lvl2)
+	w2.refit_manual = true
+	var climber: Guest = _spawn(w2)
+	_park(climber, 1, 20.5)
+	var bed: RoomRuntime = _find_room(w2, &"cabin")
+	_check(climber.cabin_uid == bed.uid and bed.sleepers.has(climber.id), "the climber has a bed")
+	while w2.port_stop.phase != PortStop.DOCKING and w2.time < 20.0:
+		w2.tick(SimConst.TICK)
+	while w2.port_stop.phase_t < SimConst.DOCK_TIME - 0.4:
+		w2.tick(SimConst.TICK)
+	climber.mode = Guest.WALK
+	climber.state = Guest.WALK
+	_check(climber.plan_route(w2.grid, 2, 3.0), "a route up")
+	while climber.travel_mode != Walker.T_CLIMB:
+		w2.tick(SimConst.TICK)
+		if w2.port_stop.phase == PortStop.EXCURSION:
+			break
+	while w2.port_stop.phase != PortStop.EXCURSION:
+		w2.tick(SimConst.TICK)
+	_check(climber.excursion_pending and climber.vertical_busy() and not climber.excursion, "mid-climb when the excursion began: pending")
+	w2.port_stop.phase_t = SimConst.EXCURSION_MAX
+	w2.tick(SimConst.TICK)
+	_eq(w2.port_stop.phase, PortStop.READY, "timed out")
+	_check(climber.excursion and not climber.excursion_pending and climber.mode == Guest.GONE, "the pending guest went ashore as an excursion guest")
+	_check(not bed.sleepers.has(climber.id), "their bed is free again")
+	_check(not climber.lost and w2.director.lost_count(w2) == 0, "not lost")
+	_eq(int(w2.metrics["excursions"]), 1, "counted as an excursion")
+	_near(w2.director.compute_rating(w2), climber.satisfaction, 0.0001, "still counted in the rating (§13.8)")
+
+	# --- A bed freed by the excursion reaches a guest who had none
+	var lvl3: LevelDef = _port_level(&"med_5", {"t": 5.0, "name": "Naxos", "disembark": 1.0, "board": 0})
+	var w3: SimWorld = _world(&"med_5", _small_ship(), {}, 33, lvl3)
+	w3.refit_manual = true
+	var guests3: Array[Guest] = []
+	for i in 8:
+		var g: Guest = _spawn(w3)
+		_park(g, 2, 3.0 + float(i))
+		guests3.append(g)
+	var crit: Guest = w3.vip_sim.board(w3, &"critic")   # (the beds are full: homeless, and a critic mid-review never goes ashore)
+	_park(crit, 2, 15.0)
+	_check(crit.cabin_uid < 0, "the critic has no bed (all 8 are taken)")
+	_check(_to_ready(w3) > 0.0, "ready")
+	for g in guests3:
+		_check(g.excursion, "everybody else went ashore")
+	_check(crit.is_aboard() and not crit.excursion, "the critic is still aboard")
+	_check(crit.cabin_uid >= 0 and w3.room_sim.room(crit.cabin_uid).sleepers.has(crit.id), "and has taken one of the freed beds")
+
+	# --- A sick follower picks the medbay over the leader's target (a seasick one too)
+	var base_ship: Array = _small_ship()
+	for flavour in [&"sick", &"seasick"]:
+		var wm: SimWorld = _world(&"med_3", base_ship + [[&"medbay", 1, 6]], {}, 41, _p3_level(&"med_3", [], 0.0))
+		var gm := GuestGroup.new()
+		gm.id = 1
+		gm.size = 2
+		wm.groups.append(gm)
+		var lead: Guest = wm.guest_sim.spawn_guest(wm, &"holidaymaker", gm)
+		var fol: Guest = wm.guest_sim.spawn_guest(wm, &"holidaymaker", gm)
+		_advance(wm, 1.5)
+		_park_clean(lead, 2, 6.0)
+		_park_clean(fol, 1, 8.0)
+		lead.nv[1] = 20.0
+		fol.nv[1] = 60.0   # hungry enough to tag along behind the leader to the buffet ...
+		fol.sick = flavour == &"sick"
+		fol.seasick = flavour == &"seasick"
+		wm.guest_sim._choose_room(wm, lead)
+		_eq(wm.room_by_uid(lead.target_uid).def.id, &"buffet", "%s: the leader goes to the buffet" % flavour)
+		wm.guest_sim._choose_room(wm, fol)
+		_check(fol.target_uid >= 0 and wm.room_by_uid(fol.target_uid).def.id == &"medbay", "%s: the follower goes to the medbay instead" % flavour)
+		_eq(int(wm.metrics["group_follows"]), 0, "%s: no tagging along" % flavour)
+	# ... but with no medbay aboard it still follows
+	var wn: SimWorld = _world(&"med_3", base_ship, {}, 42, _p3_level(&"med_3", [], 0.0))
+	var gn := GuestGroup.new()
+	gn.id = 1
+	gn.size = 2
+	wn.groups.append(gn)
+	var lead_n: Guest = wn.guest_sim.spawn_guest(wn, &"holidaymaker", gn)
+	var fol_n: Guest = wn.guest_sim.spawn_guest(wn, &"holidaymaker", gn)
+	_advance(wn, 1.5)
+	_park_clean(lead_n, 2, 6.0)
+	_park_clean(fol_n, 1, 8.0)
+	lead_n.nv[1] = 20.0
+	fol_n.nv[1] = 60.0
+	fol_n.sick = true
+	wn.guest_sim._choose_room(wn, lead_n)
+	wn.guest_sim._choose_room(wn, fol_n)
+	_eq(fol_n.target_uid, lead_n.target_uid, "no medbay aboard: a sick follower still tags along")
+	# a medbay built in the Quick refit counts as soon as it is there
+	var lvl_r: LevelDef = _port_level(&"med_5", {"t": 5.0, "name": "Delos", "disembark": 0.0, "board": 0})
+	var wr: SimWorld = _world(&"med_5", base_ship, {}, 43, lvl_r)
+	wr.refit_manual = true
+	var gr_g := GuestGroup.new()
+	gr_g.id = 1
+	gr_g.size = 2
+	wr.groups.append(gr_g)
+	var lead_r: Guest = wr.guest_sim.spawn_guest(wr, &"holidaymaker", gr_g)
+	var fol_r: Guest = wr.guest_sim.spawn_guest(wr, &"holidaymaker", gr_g)
+	_advance(wr, 1.5)
+	_check(_to_ready(wr) > 0.0, "refit world ready")
+	_check(not wr.has_room_type(&"medbay"), "no medbay yet")
+	_check(wr.add_room(&"medbay", 1, 6) > 0, "a medbay is built in the refit")
+	_check(wr.has_room_type(&"medbay"), "the ship knows about it")
+	_park_clean(lead_r, 2, 6.0)
+	_park_clean(fol_r, 1, 8.0)
+	lead_r.nv[1] = 20.0
+	fol_r.nv[1] = 60.0
+	fol_r.seasick = true
+	wr.guest_sim._choose_room(wr, lead_r)
+	wr.guest_sim._choose_room(wr, fol_r)
+	_check(fol_r.target_uid >= 0 and wr.room_by_uid(fol_r.target_uid).def.id == &"medbay", "a seasick follower uses the refit medbay")
+
+	# --- A walker mid-climb during add_room is re-planned right after the hop (the new stairs shorten the rest of its way)
+	var lvl5: LevelDef = _port_level(&"med_5", {"t": 5.0, "name": "Delos", "disembark": 0.0, "board": 0})
+	var w5: SimWorld = _world(&"med_5", [[&"stairs", 1, 20], [&"stairs", 2, 20]], {}, 45, lvl5)
+	w5.refit_manual = true
+	var hiker: Guest = _spawn(w5)
+	_check(_to_ready(w5) > 0.0, "ready")
+	_park(hiker, 1, 20.5)
+	hiker.mode = Guest.WALK
+	hiker.state = Guest.WALK
+	_check(hiker.plan_route(w5.grid, 3, 3.0), "a route to deck 3 via the far stairs")
+	hiker.step_route(0.1, SimConst.GUEST_SPEED, w5.transit, &"walk")
+	_eq(hiker.travel_mode, Walker.T_CLIMB, "mid-climb at the refit")
+	_check(w5.add_room(&"stairs", 2, 4) > 0, "stairs built nearer to the destination")
+	_check(hiker.vertical_busy(), "(the climber was left alone for now)")
+	_check(w5.cast_off(), "cast off")
+	for i in int(5.0 / SimConst.TICK):
+		w5.tick(SimConst.TICK)
+		if not hiker.vertical_busy():
+			break
+	_check(not hiker.vertical_busy(), "the climb is over")
+	_eq(hiker.deck, 2, "on deck 2")
+	var upper: float = -1.0
+	for i in range(hiker.wp_i, hiker.wp_mode.size()):
+		if hiker.wp_mode[i] == 1:
+			upper = hiker.wp_x[i]
+	_near(upper, 4.5, 0.01, "the next climb is at the new stairs (x = 4.5)")
+	_near(hiker.wp_x[hiker.wp_x.size() - 1], 3.0, 0.001, "to the same destination")
+	_check(w5._repath_later.is_empty(), "nobody is left waiting to be re-planned")
+
+	# --- The port manifest / autobuilder count the port stop's boarding wave of couples and families
+	for id in [&"arctic_4", &"arctic_6", &"underworld_4", &"underworld_6"]:
+		var pl: LevelDef = ContentStore.level(id)
+		var sm: Dictionary = GuestGroup.summary(pl)
+		var no_stop: LevelDef = pl.duplicate(true)
+		no_stop.port_stop = {}
+		_check(int(sm["groups"]) > int(GuestGroup.summary(no_stop)["groups"]), "%s: the boarding wave adds groups to the plan" % id)
+		var plan_sum: Dictionary = {"groups": 0, "kids": 0}
+		for count in GuestGroup.plan(pl.port_board(), pl.group_ratio):
+			plan_sum["groups"] += 1
+			plan_sum["kids"] += count
+		var wave_only: LevelDef = pl.duplicate(true)
+		wave_only.waves = [] as Array[Dictionary]
+		var wo: Dictionary = GuestGroup.summary(wave_only)
+		_eq(int(wo["groups"]), int(plan_sum["groups"]), "%s: the boarding wave alone: groups" % id)
+		_eq(int(wo["kids"]), int(plan_sum["kids"]), "%s: the boarding wave alone: kids" % id)
+		var res: Dictionary = SimRunner.run(pl, AutoBuilder.build(pl), 7, &"passive")
+		_eq(int(res["groups"]["count"]), int(sm["groups"]), "%s: groups in the run match the summary" % id)
+		_eq(int(res["groups"]["kids"]), int(sm["kids"]), "%s: kids in the run match the summary" % id)
+		_eq(int(AutoBuilder.build(pl).manifest()["kids"]), int(sm["kids"]), "%s: the manifest agrees" % id)
 
 
 func _t_refit() -> void:

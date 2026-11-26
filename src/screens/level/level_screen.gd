@@ -341,6 +341,8 @@ func _build_last_voyage_toggle() -> void:
 
 
 func _on_last_voyage_toggled(on: bool) -> void:
+	if phase != Phase.PORT:
+		return
 	if on:
 		_last_toggle.text = "Hide heatmap"
 		_open_heatmap(params["report"], "", false)
@@ -403,6 +405,11 @@ func _teardown_port() -> void:
 			_port_ui.call(&"teardown")
 		_port_ui.queue_free()
 	_port_ui = null
+	# the "Last voyage" heatmap and its toggle belong to the port: neither may outlive it (the results' own heatmap needs `_heat` free)
+	_close_heatmap(false)
+	if _last_toggle != null and is_instance_valid(_last_toggle):
+		_last_toggle.queue_free()
+	_last_toggle = null
 	if port != null and port.changed.is_connected(_on_port_changed):
 		port.changed.disconnect(_on_port_changed)
 

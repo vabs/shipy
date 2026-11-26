@@ -302,7 +302,8 @@ func _pick_wander(w: SimWorld, g: Guest) -> void:
 func _choose_room(w: SimWorld, g: Guest) -> void:
 	if w.events.top_deck_rush and g.min_need() >= 35.0 and g.deck == _top_deck:
 		return  # content guests stay on deck to watch the lights
-	if g.group_slot > 0 and _follow_leader(w, g):
+	# A sick or seasick follower heads for the medbay instead of tagging along (without one aboard there is nothing to choose).
+	if g.group_slot > 0 and not (g.is_ailing() and w.has_room_type(&"medbay")) and _follow_leader(w, g):
 		return
 	var u: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0, 0.0])
 	for i in 4:

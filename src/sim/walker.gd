@@ -103,6 +103,24 @@ func begin_ride() -> void:
 		state = &"elevator_ride"
 
 
+## Cancels a climb, an elevator wait or an elevator ride on the spot (the walker leaves the ship mid-hop): gives its place in the
+## waiting line / the car back to `transit` and stands on the nearest deck. The route is left alone (the caller clears or re-plans it).
+func abort_travel(transit: Transit) -> void:
+	if travel_mode == T_NONE:
+		return
+	if transit != null:
+		if travel_mode == T_WAIT:
+			transit.dequeue(self, _col)
+		elif travel_mode == T_RIDE:
+			transit.release(_col)
+	travel_mode = T_NONE
+	travel_t = 0.0
+	deck = clampi(int(round(deck_f)), mini(_from_deck, _to_deck), maxi(_from_deck, _to_deck))
+	deck_f = float(deck)
+	if report_travel:
+		state = _resume_state
+
+
 ## Advances along the route by `dt` seconds. Returns true once the route is finished.
 ## `base_state` is restored after a vertical hop.
 func step_route(dt: float, speed: float, transit: Transit, base_state: StringName) -> bool:

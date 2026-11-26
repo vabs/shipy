@@ -160,13 +160,20 @@ func _ashore(w: SimWorld) -> bool:
 	return true
 
 
+## Time is up (or everybody is ashore): whoever is still on the way steps off. A guest caught on the stairs or in the lift gives
+## their place in the elevator back first, and one who had not even begun the walk (`excursion_pending`) goes through the normal
+## excursion bookkeeping (bed freed, counted as an excursion, never lost). Freed beds then go to guests who had none.
 func _finish_excursion(w: SimWorld) -> void:
 	for g in w.guests:
 		if g.mode == Guest.EXCURSION or g.excursion_pending:
-			g.excursion_pending = false
+			g.abort_travel(w.transit)
+			if g.excursion_pending:
+				g.excursion_pending = false
+				w.guest_sim.begin_excursion(w, g)
 			g.clear_route()
 			g.mode = Guest.GONE
 			g.state = Guest.GONE
+	w.room_sim.fill_homeless(w)
 	phase = READY
 	phase_t = 0.0
 	w.port_stop_ready.emit()
