@@ -27,6 +27,8 @@ var start_delay: float = 0.0
 var autoplayer: AutoPlayer = null
 ## Real seconds of animation clock that advance (frozen while paused).
 var anim_clock: float = 0.0
+## While true the speed stays at 0 (the Quick refit at a port stop is open): set_speed() ignores anything but a pause.
+var locked: bool = false
 
 var _acc: float = 0.0
 var _ended_emitted: bool = false
@@ -53,6 +55,8 @@ func is_paused() -> bool:
 
 func set_speed(s: int) -> void:
 	s = clampi(s, 0, 3)
+	if locked and s > 0:
+		return
 	if s == speed:
 		return
 	if speed > 0:

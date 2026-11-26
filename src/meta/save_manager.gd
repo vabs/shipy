@@ -2,8 +2,12 @@ extends Node
 ## SaveManager autoload ("SaveManager") — campaign progress. See docs/SPEC.md §3 and §9.
 ##
 ## File: `user://save.json`
-##   { "version": 1, "levels": { "<level_id>": {"stars": int, "best_rating": float,
-##                                               "best_profit": int, "plays": int} } }
+##   { "version": 1,
+##     "levels": { "<level_id>": {"stars": int, "best_rating": float, "best_profit": int,
+##                                "best_payout": int, "plays": int} },
+##     "company": {"spent": int, "perks": {"<perk_id>": level}} }
+## Company funds (docs/SPEC.md §13.1) = sum of every level's best_payout minus `company.spent`; they can never be farmed
+## because only an improvement on a level's best payout is credited. Old saves without these keys load with defaults.
 ## Unknown top-level keys are preserved on write. Player *preferences* live in Settings
 ## (`user://settings.cfg`), not here, so resetting progress never touches them.
 ##
@@ -37,13 +41,25 @@ const FALLBACK_ROOMS: Array[Array] = [
 	[&"cinema", 2, &""], [&"gym", 3, &""], [&"medbay", 3, &""],
 	[&"generator", 3, &""], [&"water_tank", 3, &""],
 	[&"arcade", 4, &""], [&"sauna", 4, &"med"], [&"restaurant", 5, &""],
-	[&"ice_rink", 7, &"arctic"], [&"elevator", 7, &""], [&"casino", 13, &"underworld"],
+	[&"kids_club", 6, &""],
+	[&"ice_rink", 7, &"arctic"], [&"elevator", 7, &""], [&"crew_quarters", 7, &""], [&"casino", 13, &"underworld"],
 ]
 
+## Feature ids announced on the results screen. Crew roles are features named `staff_<role id>` (docs/SPEC.md §13.9).
 const FEATURE_NAMES: Dictionary = {
 	&"tier_2": "Tier II upgrades",
 	&"tier_3": "Tier III upgrades",
+	&"staff_medic": "Medic",
+	&"staff_entertainer": "Entertainer",
+	&"staff_chef": "Chef",
+	&"staff_warden": "Ghost Warden",
+	&"guests_vips": "VIP guests",
+	&"guests_kids": "Kids & families",
 }
+## `guests_vips` / `guests_kids` are announced when the first level that schedules VIPs / boards couples and families (with
+## kids) becomes playable (LevelDef.vips / group_ratio decide, see guest_features_at). The kids' club room is announced as a
+## room by its own unlock level.
+const STAFF_FEATURE_PREFIX: String = "staff_"
 
 ## Where the save lives. Tests override this before calling load_save().
 var save_path: String = "user://save.json"
@@ -57,6 +73,8 @@ var last_load_status: StringName = &"missing"
 
 var _levels: Dictionary = {}  # String level_id -> Dictionary
 var _extra: Dictionary = {}   # unknown top-level keys, written back untouched
+var _spent: int = 0           # funds spent on perks
+var _perks: Dictionary = {}   # StringName perk_id -> int level (1..Perks.MAX_LEVEL)
 
 
 func _ready() -> void:
@@ -74,13 +92,14 @@ func stars_for(level_id: StringName) -> int:
 	return int(e.get("stars", 0))
 
 
-## {stars, best_rating, best_profit, plays, played}. Zeros when never played.
+## {stars, best_rating, best_profit, best_payout, plays, played}. Zeros when never played.
 func best_for(level_id: StringName) -> Dictionary:
 	var e: Dictionary = _levels.get(String(level_id), {})
 	return {
 		"stars": int(e.get("stars", 0)),
 		"best_rating": float(e.get("best_rating", 0.0)),
 		"best_profit": int(e.get("best_profit", 0)),
+		"best_payout": int(e.get("best_payout", 0)),
 		"plays": int(e.get("plays", 0)),
 		"played": _levels.has(String(level_id)),
 	}
@@ -173,17 +192,143 @@ func level_lock_reason(level_id: StringName) -> String:
 
 
 func feature_display_name(feature_id: StringName) -> String:
+	var role: StringName = staff_role_of_feature(feature_id)
+	if role != &"":
+		var db := _db()
+		if db != null and db.has_method("staff_role"):
+			var d: Variant = db.call("staff_role", role)
+			if d != null and String(_prop(d, "display_name", "")) != "":
+				return String(_prop(d, "display_name", ""))
 	return String(FEATURE_NAMES.get(feature_id, String(feature_id).capitalize()))
+
+
+## Role id of a `staff_<role>` feature ("" for every other feature).
+static func staff_role_of_feature(feature_id: StringName) -> StringName:
+	var s: String = String(feature_id)
+	if s.begins_with(STAFF_FEATURE_PREFIX):
+		return StringName(s.trim_prefix(STAFF_FEATURE_PREFIX))
+	return &""
+
+
+## Guest features (`guests_vips`, `guests_kids`) available once campaign level `index` is reachable: the first campaign level
+## with LevelDef.vips / LevelDef.group_ratio set introduces them. Empty when no content provider lists the campaign.
+func guest_features_at(index: int) -> Array[StringName]:
+	var out: Array[StringName] = []
+	var db := _db()
+	if db == null or not db.has_method("campaign"):
+		return out
+	var first_vips: int = 0
+	var first_groups: int = 0
+	var levels: Variant = db.call("campaign")
+	if levels is Array:
+		for lv: Variant in levels:
+			var ci: int = int(_prop(lv, "campaign_index", 0))
+			var vips: Variant = _prop(lv, "vips", [])
+			if vips is Array and not (vips as Array).is_empty() and (first_vips == 0 or ci < first_vips):
+				first_vips = ci
+			if float(_prop(lv, "group_ratio", 0.0)) > 0.0 and (first_groups == 0 or ci < first_groups):
+				first_groups = ci
+	if first_vips > 0 and index >= first_vips:
+		out.append(&"guests_vips")
+	if first_groups > 0 and index >= first_groups:
+		out.append(&"guests_kids")
+	return out
+
+
+## Crew roles a player can hire once campaign level `index` is reachable (`unlock_level <= index`; ids).
+## Empty when no content provider lists roles (the headless meta tests).
+func unlocked_staff_at(index: int) -> Array[StringName]:
+	var out: Array[StringName] = []
+	var db := _db()
+	if db != null and db.has_method("all_staff_roles"):
+		var roles: Variant = db.call("all_staff_roles")
+		if roles is Array:
+			for r: Variant in roles:
+				var id: String = String(_prop(r, "id", ""))
+				if id != "" and int(_prop(r, "unlock_level", 1)) <= index:
+					out.append(StringName(id))
+	return out
+
+
+# ---------------------------------------------------------------------------------------------
+# Company funds & perks (docs/SPEC.md §13.1)
+# ---------------------------------------------------------------------------------------------
+
+## Funds earned so far: the best payout of every level, summed.
+func funds_earned() -> int:
+	var t: int = 0
+	for e: Dictionary in _levels.values():
+		t += int(e.get("best_payout", 0))
+	return t
+
+
+## Funds spent on perks so far.
+func funds_spent() -> int:
+	return _spent
+
+
+## Spendable company funds = earned - spent (never negative).
+func funds() -> int:
+	return maxi(funds_earned() - _spent, 0)
+
+
+## Level (0..Perks.MAX_LEVEL) of one perk.
+func perk_level(perk_id: StringName) -> int:
+	return int(_perks.get(perk_id, 0))
+
+
+## Copy of everything owned, `{perk_id: level}` with StringName keys. Hand it to PortState.perks.
+func perks() -> Dictionary:
+	return _perks.duplicate()
+
+
+## `{ok, reason, price}` for buying the next level of a perk.
+func can_buy_perk(perk_id: StringName) -> Dictionary:
+	if not Perks.is_perk(perk_id):
+		return {"ok": false, "reason": "Unknown perk", "price": 0}
+	var next: int = perk_level(perk_id) + 1
+	if next > Perks.MAX_LEVEL:
+		return {"ok": false, "reason": "Already maxed", "price": 0}
+	var price: int = Perks.price(next)
+	if funds() < price:
+		return {"ok": false, "reason": "Need $%d more" % (price - funds()), "price": price}
+	return {"ok": true, "reason": "", "price": price}
+
+
+## Buys the next level of a perk for company funds. False when unknown, maxed or too expensive.
+func buy_perk(perk_id: StringName) -> bool:
+	var chk: Dictionary = can_buy_perk(perk_id)
+	if not bool(chk["ok"]):
+		return false
+	_spent += int(chk["price"])
+	_perks[perk_id] = perk_level(perk_id) + 1
+	save()
+	progress_changed.emit()
+	return true
+
+
+## Gives back every perk for its full price. Returns the amount refunded (0 when nothing was owned).
+func refund_perks() -> int:
+	var value: int = _spent
+	if _perks.is_empty() and _spent == 0:
+		return 0
+	_perks.clear()
+	_spent = 0
+	save()
+	progress_changed.emit()
+	return value
 
 
 # ---------------------------------------------------------------------------------------------
 # Mutations
 # ---------------------------------------------------------------------------------------------
 
-## Records a finished voyage: `{level_id, stars, rating, profit}`. Keeps per-field bests and
-## returns what the result unlocked:
+## Records a finished voyage: `{level_id, stars, rating, profit, payout}`. Keeps per-field bests and
+## returns what the result unlocked and earned:
 ## `{new_stars, total_stars, best_stars, newly_unlocked_levels, newly_unlocked_destinations,
-##   newly_unlocked_rooms, newly_unlocked_features}` (`new_stars` = improvement on the old best).
+##   newly_unlocked_rooms, newly_unlocked_features, funds_earned, funds_total, best_payout}`
+## (`new_stars` = improvement on the old best; `funds_earned` = `max(0, payout - old best payout)`, the only thing
+## credited to company funds; `funds_total` = spendable funds afterwards; `best_payout` = the level's best so far).
 func record_result(result: Dictionary) -> Dictionary:
 	var out: Dictionary = {
 		"new_stars": 0,
@@ -193,6 +338,9 @@ func record_result(result: Dictionary) -> Dictionary:
 		"newly_unlocked_destinations": [] as Array[StringName],
 		"newly_unlocked_rooms": [] as Array[StringName],
 		"newly_unlocked_features": [] as Array[StringName],
+		"funds_earned": 0,
+		"funds_total": funds(),
+		"best_payout": 0,
 	}
 	var id := StringName(String(result.get("level_id", "")))
 	if id == &"":
@@ -203,17 +351,20 @@ func record_result(result: Dictionary) -> Dictionary:
 	var stars: int = clampi(int(result.get("stars", 0)), 0, MAX_STARS_PER_LEVEL)
 	var rating: float = float(result.get("rating", 0.0))
 	var profit: int = int(result.get("profit", 0))
+	var payout: int = maxi(0, int(result.get("payout", 0)))
 
 	var old_stars: int = stars_for(id)
+	var old_payout: int = int(best_for(id)["best_payout"])
 	var entry: Dictionary
 	if _levels.has(key):
 		entry = _levels[key]
 		entry["stars"] = maxi(int(entry.get("stars", 0)), stars)
 		entry["best_rating"] = maxf(float(entry.get("best_rating", 0.0)), rating)
 		entry["best_profit"] = maxi(int(entry.get("best_profit", profit)), profit)
+		entry["best_payout"] = maxi(old_payout, payout)
 		entry["plays"] = int(entry.get("plays", 0)) + 1
 	else:
-		entry = {"stars": stars, "best_rating": rating, "best_profit": profit, "plays": 1}
+		entry = {"stars": stars, "best_rating": rating, "best_profit": profit, "best_payout": payout, "plays": 1}
 	_levels[key] = entry
 
 	var after: Dictionary = _snapshot()
@@ -224,15 +375,20 @@ func record_result(result: Dictionary) -> Dictionary:
 	out["newly_unlocked_destinations"] = _diff(before["destinations"], after["destinations"])
 	out["newly_unlocked_rooms"] = _diff(before["rooms"], after["rooms"])
 	out["newly_unlocked_features"] = _diff(before["features"], after["features"])
+	out["funds_earned"] = maxi(0, payout - old_payout)
+	out["funds_total"] = funds()
+	out["best_payout"] = int(entry["best_payout"])
 
 	save()
 	progress_changed.emit()
 	return out
 
 
-## Wipes all level progress (not the settings) and saves.
+## Wipes all level progress, company funds and perks (not the settings) and saves.
 func reset_progress() -> void:
 	_levels.clear()
+	_perks.clear()   # funds come from the levels, so the company starts over with them
+	_spent = 0
 	save()
 	# Seen tutorial / first-time hints live in their own file; a progress reset shows them again.
 	const HINT_STORE_PATH := "res://src/screens/level/tutorial/hint_store.gd"
@@ -251,6 +407,10 @@ func save() -> bool:
 	var data: Dictionary = _extra.duplicate(true)
 	data["version"] = SAVE_VERSION
 	data["levels"] = _levels
+	var perks_out: Dictionary = {}
+	for k: StringName in _perks:
+		perks_out[String(k)] = int(_perks[k])
+	data["company"] = {"spent": _spent, "perks": perks_out}
 	var tmp: String = save_path + ".tmp"
 	var f := FileAccess.open(tmp, FileAccess.WRITE)
 	if f == null:
@@ -279,6 +439,8 @@ func save() -> bool:
 func load_save() -> bool:
 	_levels.clear()
 	_extra.clear()
+	_perks.clear()
+	_spent = 0
 	if not FileAccess.file_exists(save_path):
 		last_load_status = &"missing"
 		return true
@@ -304,11 +466,24 @@ func load_save() -> bool:
 					"stars": clampi(int(v.get("stars", 0)), 0, MAX_STARS_PER_LEVEL),
 					"best_rating": float(v.get("best_rating", 0.0)),
 					"best_profit": int(v.get("best_profit", 0)),
+					"best_payout": maxi(0, int(v.get("best_payout", 0))),
 					"plays": maxi(0, int(v.get("plays", 1))),
 				}
+	var raw_company: Variant = data.get("company", {})
+	if raw_company is Dictionary:
+		var co: Dictionary = raw_company
+		_spent = maxi(0, int(co.get("spent", 0)))
+		var raw_perks: Variant = co.get("perks", {})
+		if raw_perks is Dictionary:
+			for k: Variant in (raw_perks as Dictionary).keys():
+				var pid := StringName(String(k))
+				var lv: int = clampi(int((raw_perks as Dictionary)[k]), 0, Perks.MAX_LEVEL)
+				if lv > 0 and Perks.is_perk(pid):
+					_perks[pid] = lv
 	for k: Variant in data.keys():
-		if String(k) != "version" and String(k) != "levels":
-			_extra[String(k)] = data[k]
+		var ks: String = String(k)
+		if ks != "version" and ks != "levels" and ks != "company":
+			_extra[ks] = data[k]
 	last_load_status = &"ok"
 	return true
 
@@ -385,6 +560,10 @@ func _snapshot() -> Dictionary:
 		features.append(&"tier_2")
 	if cleared >= TIER_3_AFTER_LEVEL:
 		features.append(&"tier_3")
+	for role: StringName in unlocked_staff_at(max_playable):
+		features.append(StringName(STAFF_FEATURE_PREFIX + String(role)))
+	for gf in guest_features_at(max_playable):
+		features.append(gf)
 	return {
 		"levels": levels,
 		"destinations": dests,

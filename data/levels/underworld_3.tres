@@ -38,27 +38,39 @@ archetype_weights = {
 }
 scheduled_events = Array[Dictionary]([{
 "event": &"film_night",
-"t": 55.0
+"t": 50.0
 }, {
 "event": &"haunting",
-"t": 110.0
+"t": 100.0
+}, {
+"event": &"storm",
+"t": 135.0
 }, {
 "event": &"food_poisoning",
-"t": 160.0
+"t": 190.0
 }, {
 "event": &"power_surge",
-"t": 205.0
+"t": 230.0
 }])
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 27
+"value": 34
 }, {
 "type": "rating",
-"value": 52
+"value": 67
 }, {
 "type": "served",
-"value": 260
+"value": 300
 }])
-mess_mult = 1.3
-health_mult = 0.77
-decay_mult = 1.2
+mess_mult = 0.81
+health_mult = 1.21
+decay_mult = 1.23
+staff_fatigue = true
+vips = Array[Dictionary]([{
+"kind": &"critic",
+"t": 45.0
+}, {
+"kind": &"inspector",
+"t": 100.0
+}])
+group_ratio = 0.35

@@ -7,6 +7,8 @@ extends RefCounted
 const SLOW_DT: float = 0.5
 const CHOOSE_THRESHOLD: float = 0.02
 
+## Hospitality School perk: multiplies every guest's queue patience (SimWorld.apply_perks).
+var patience_perk_mult: float = 1.0
 var _cold_drain: float = 0.0
 var _hyg_base: float = 1.0
 var _top_deck: int = 0
@@ -28,7 +30,9 @@ func setup(w: SimWorld) -> void:
 	_arch_defs = {}
 	_arch_fav = {}
 	var ids: Array = w.level.archetype_weights.keys()
-	ids.sort()
+	# Sorted as Strings: sorting StringNames compares their memory addresses, which differ from process to process and
+	# made the archetype roll (and with it the whole voyage) non-reproducible between runs.
+	ids.sort_custom(func(a: Variant, b: Variant) -> bool: return String(a) < String(b))
 	var total: float = 0.0
 	for k in ids:
 		var id: StringName = StringName(k)
@@ -51,6 +55,26 @@ func setup(w: SimWorld) -> void:
 		_arch_weights.append(1.0)
 		_arch_defs[&"holidaymaker"] = def2
 		_arch_fav[&"holidaymaker"] = {}
+	# Kids never appear in the level's archetype weights: they only board inside families (spawn_guest by id).
+	var kid_def: ArchetypeDef = ContentStore.archetype(&"kid")
+	if kid_def != null:
+		var kid_fav: Dictionary = {}
+		for r in w.room_sim.service_rooms:
+			if kid_def.likes(r.def):
+				kid_fav[r.uid] = true
+		_arch_defs[&"kid"] = kid_def
+		_arch_fav[&"kid"] = kid_fav
+
+
+## A room was built in the quick refit: archetypes that love it count it among their favourites (the dictionaries are shared with the
+## guests aboard, so they see it at once).
+func on_room_added(_w: SimWorld, r: RoomRuntime) -> void:
+	if not r.def.is_service_room():
+		return
+	for id in _arch_defs:
+		var def: ArchetypeDef = _arch_defs[id]
+		if def.likes(r.def):
+			(_arch_fav[id] as Dictionary)[r.uid] = true
 
 
 func _pick_archetype(w: SimWorld) -> StringName:
@@ -65,8 +89,9 @@ func _pick_archetype(w: SimWorld) -> StringName:
 	return _arch_ids[_arch_ids.size() - 1]
 
 
-## Boards a new guest at the gangway (ticket paid, cabin assigned).
-func spawn_guest(w: SimWorld, archetype_id: StringName = &"") -> Guest:
+## Boards a new guest at the gangway (ticket paid, cabin assigned). `group` makes the guest the next member of that
+## GuestGroup (the first one boarding books the shared cabin for everybody, or splits the group up).
+func spawn_guest(w: SimWorld, archetype_id: StringName = &"", group: GuestGroup = null) -> Guest:
 	if archetype_id == &"" or not _arch_defs.has(archetype_id):
 		archetype_id = _pick_archetype(w)
 	var g := Guest.new()
@@ -87,8 +112,18 @@ func spawn_guest(w: SimWorld, archetype_id: StringName = &"") -> Guest:
 	g.mood = &"ok"
 	g.facing = 1
 	w.guests.append(g)
-	w.room_sim.assign_cabin(g)
-	w.economy_earn(&"tickets", w.level.ticket_price, &"tickets")
+	if group != null:
+		g.group_id = group.id
+		g.group_slot = group.members.size()
+		if group.members.is_empty():
+			w.room_sim.plan_group_cabin(group)
+			if group.split:
+				w.metrics["groups_split"] += 1
+		group.members.append(g.id)
+		if group.split:
+			g.satisfaction = maxf(g.satisfaction - SimConst.GROUP_SPLIT_SAT, 0.0)
+	w.room_sim.assign_cabin(g, group)
+	w.economy_earn(&"tickets", w.ticket_price, &"tickets")
 	w.guest_boarded.emit(g.id)
 	return g
 
@@ -98,6 +133,8 @@ func tick(w: SimWorld, dt: float) -> void:
 		if g.mode == Guest.GONE:
 			continue
 		_fast(w, g, dt)
+		if g.excursion and g.mode == Guest.GONE:
+			continue   # just stepped ashore: the satisfaction they keep is the one they left with
 		g.slow_t += dt
 		if g.slow_t >= SLOW_DT:
 			var sdt: float = g.slow_t
@@ -119,7 +156,11 @@ func _fast(w: SimWorld, g: Guest, dt: float) -> void:
 		return
 	if g.slip_timer > 0.0:
 		g.slip_timer = maxf(g.slip_timer - dt, 0.0)
-	if g.storm_pending and not g.vertical_busy() and m != Guest.STORM_OFF:
+	if g.excursion_pending and not g.vertical_busy():
+		g.excursion_pending = false
+		begin_excursion(w, g)
+		m = g.mode
+	elif g.storm_pending and not g.vertical_busy() and m != Guest.STORM_OFF:
 		g.storm_pending = false
 		_begin_storm(w, g)
 		m = g.mode
@@ -127,9 +168,12 @@ func _fast(w: SimWorld, g: Guest, dt: float) -> void:
 		Guest.BOARDING:
 			g.mode_t -= dt
 			if g.mode_t <= 0.0:
-				g.mode = Guest.WANDER
-				g.eval_timer = w.rng.randf_range(0.2, 1.2)
-				g.wander_pause = 0.0
+				if g.vip_kind == VipSim.INSPECTOR:
+					w.vip_sim.inspect_begin(w, g)
+				else:
+					g.mode = Guest.WANDER
+					g.eval_timer = w.rng.randf_range(0.2, 1.2)
+					g.wander_pause = 0.0
 		Guest.WANDER:
 			_wander(w, g, dt)
 		Guest.WALK:
@@ -138,9 +182,19 @@ func _fast(w: SimWorld, g: Guest, dt: float) -> void:
 					_arrive(w, g)
 		Guest.QUEUE:
 			_queue_tick(w, g, dt)
+		Guest.INSPECT:
+			if g.slip_timer <= 0.0:
+				if _move(w, g, dt, SimConst.GUEST_SPEED * SimConst.INSPECT_SPEED_MULT, Guest.INSPECT):
+					w.vip_sim.inspect_arrived(w, g)
 		Guest.STORM_OFF:
 			if g.slip_timer <= 0.0:
 				if _move(w, g, dt, SimConst.GUEST_SPEED * 1.25, Guest.STORM_OFF):
+					g.mode = Guest.GONE
+					g.state = Guest.GONE
+					g.clear_route()
+		Guest.EXCURSION:
+			if g.slip_timer <= 0.0:
+				if _move(w, g, dt, SimConst.GUEST_SPEED * SimConst.EXCURSION_SPEED_MULT, Guest.EXCURSION):
 					g.mode = Guest.GONE
 					g.state = Guest.GONE
 					g.clear_route()
@@ -155,6 +209,8 @@ func _move(w: SimWorld, g: Guest, dt: float, speed: float, base: StringName) -> 
 	if g.sick:
 		sp *= 0.8
 	if not g.vertical_busy():
+		if g.hold_until > w.time:
+			return false   # a medic is treating this guest: stand still
 		var cell: int = int(g.x)
 		var entered: bool = cell != g.last_cell
 		g.last_cell = cell
@@ -172,12 +228,16 @@ func _move(w: SimWorld, g: Guest, dt: float, speed: float, base: StringName) -> 
 
 
 func _wander(w: SimWorld, g: Guest, dt: float) -> void:
+	if w.events.top_closed and g.deck == _top_deck and not g.vertical_busy() and not _heads_inside(g):
+		_shelter(w, g)
 	if g.has_route() or g.vertical_busy():
 		if g.slip_timer <= 0.0:
 			var stroll: float = 1.0 if w.events.top_deck_rush else SimConst.STROLL_SPEED_MULT
+			if g.group_slot > 0:
+				stroll *= SimConst.GROUP_CATCHUP_MULT   # followers trot to keep up with their leader
 			if _move(w, g, dt, SimConst.GUEST_SPEED * stroll, Guest.WANDER):
 				g.clear_route()
-				g.wander_pause = w.rng.randf_range(0.6, 2.6)
+				g.wander_pause = w.rng.randf_range(0.6, 2.6) if g.group_slot == 0 else 0.3
 	else:
 		g.wander_pause -= dt
 		if g.wander_pause <= 0.0:
@@ -188,13 +248,30 @@ func _wander(w: SimWorld, g: Guest, dt: float) -> void:
 		_choose_room(w, g)
 
 
+## True when the guest's current route ends below the top deck.
+func _heads_inside(g: Guest) -> bool:
+	var n: int = g.wp_deck.size()
+	return n > 0 and g.has_route() and g.wp_deck[n - 1] < _top_deck
+
+
+## Storm: a guest out on the closed top deck heads for the deck below (the walk graph finds the nearest stairs / elevator).
+func _shelter(w: SimWorld, g: Guest) -> void:
+	g.clear_route()
+	var below: int = maxi(_top_deck - 1, 0)
+	if below == g.deck or not g.plan_route(w.grid, below, clampf(g.x, 1.0, float(w.grid.hull.width) - 1.0)):
+		g.wander_pause = 1.0
+
+
 func _pick_wander(w: SimWorld, g: Guest) -> void:
+	if g.group_slot > 0 and _wander_with_leader(w, g):
+		return
 	var hull: HullDef = w.grid.hull
 	var top: int = hull.decks - 1
 	var td: int = g.deck
 	var tx: float = g.x
 	var roll: float = w.rng.randf()
 	var cold: bool = w.destination != null and w.destination.top_deck_satisfaction_drain > 0.0 and not w.events.cold_suspended
+	var shut: bool = w.events.top_closed
 	if w.events.top_deck_rush and roll < 0.9:
 		td = top
 		tx = w.rng.randf_range(1.5, float(hull.width) - 1.5)
@@ -204,6 +281,8 @@ func _pick_wander(w: SimWorld, g: Guest) -> void:
 			d = (g.deck + 1) % hull.decks
 			if cold and d == top:
 				d = 0
+		if shut and d == top:
+			d = maxi(top - 1, 0)
 		td = d
 		tx = w.rng.randf_range(1.0, float(hull.width) - 1.0)
 	else:
@@ -211,6 +290,8 @@ func _pick_wander(w: SimWorld, g: Guest) -> void:
 		if w.rng.randf() < 0.5:
 			dx = -dx
 		tx = clampf(g.x + dx, 0.5, float(hull.width) - 0.5)
+		if shut and td == top:
+			td = maxi(top - 1, 0)   # (the shelter logic in _wander normally catches this first)
 	if not g.plan_route(w.grid, td, tx):
 		g.wander_pause = 1.0
 
@@ -221,25 +302,29 @@ func _pick_wander(w: SimWorld, g: Guest) -> void:
 func _choose_room(w: SimWorld, g: Guest) -> void:
 	if w.events.top_deck_rush and g.min_need() >= 35.0 and g.deck == _top_deck:
 		return  # content guests stay on deck to watch the lights
+	# A sick or seasick follower heads for the medbay instead of tagging along (without one aboard there is nothing to choose).
+	if g.group_slot > 0 and not (g.is_ailing() and w.has_room_type(&"medbay")) and _follow_leader(w, g):
+		return
 	var u: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0, 0.0])
 	for i in 4:
 		var n: float = g.nv[i]
 		if n < 90.0:
 			u[i] = pow(clampf((90.0 - n) / 90.0, 0.0, 1.0), 1.5)
+	var kid: bool = g.archetype.kid
 	var graph: WalkGraph = w.grid.graph
 	var src: int = graph.node(g.deck, int(g.x))
 	var best: RoomRuntime = null
 	var best_score: float = 0.0
 	var unreach: float = WalkGraph.UNREACHABLE * 0.5
 	for r in w.room_sim.service_rooms:
-		if r.broken:
+		if r.broken or r.closed:
 			continue
 		var def: RoomDef = r.def
 		var sum: float = 0.0
 		var need_ok: bool = false
 		var is_cabin: bool = def.id == &"cabin"
 		if def.id == &"medbay":
-			if not g.sick:
+			if not g.sick and not g.seasick:
 				continue
 			sum = 10.0
 			need_ok = true
@@ -263,11 +348,13 @@ func _choose_room(w: SimWorld, g: Guest) -> void:
 		if not is_cabin:
 			var ahead: int = r.queue.size() + r.users.size() - r.cap + 1
 			if ahead > 0:
-				wait = float(ahead) * r.svc / float(maxi(r.cap, 1))
+				wait = float(ahead) * r.svc * r.svc_mult / float(maxi(r.cap, 1))
 			if r.queue.size() >= r.cap:
 				crowd = 0.6
 		var fav: float = 1.6 if g.fav.has(r.uid) else 1.0
 		var score: float = sum * r.appeal_now * fav * crowd / (walk + wait + 4.0)
+		if r.adult_mult != 1.0 and not kid:
+			score *= r.adult_mult   # the kids' club is built for kids
 		score *= 1.0 + w.rng.randf() * 0.06
 		if score > best_score:
 			best_score = score
@@ -288,6 +375,8 @@ func _go_to_room(w: SimWorld, g: Guest, r: RoomRuntime) -> void:
 	g.mode = Guest.WALK
 	g.state = Guest.WALK
 	r.incoming += 1
+	if g.group_id >= 0 and g.group_slot == 0:
+		_nudge_followers(w, g)
 
 
 func _arrive(w: SimWorld, g: Guest) -> void:
@@ -298,20 +387,32 @@ func _arrive(w: SimWorld, g: Guest) -> void:
 		g.eval_timer = 0.3
 		return
 	r.incoming = maxi(r.incoming - 1, 0)
+	if r.closed:
+		# the storm shut it while this guest was still climbing the stairs: turn around, no harm done
+		g.mode = Guest.WANDER
+		g.eval_timer = 0.3
+		g.wander_pause = 0.2
+		return
 	if r.def.id == &"cabin":
 		start_use(w, g, r)
 	elif not r.broken and r.queue.is_empty() and r.users.size() < r.cap:
+		g.queue_since = Guest.NOT_QUEUED
+		w.vip_sim.critic_arrived(w, g, r)
 		start_use(w, g, r)
 	else:
+		w.vip_sim.critic_arrived(w, g, r)
+		g.queue_since = w.time
 		r.queue.append(g.id)
 		g.mode = Guest.QUEUE
 		g.state = Guest.QUEUE
 		g.queue_index = r.queue.size() - 1
 		g.queue_x = w.room_sim.queue_spot_x(w, r, g.queue_index)
 		g.facing = 1 if g.queue_x <= r.door_x else -1
-		var p: float = SimConst.QUEUE_PATIENCE * w.level.patience_mult * w.rng.randf_range(0.9, 1.1)
+		var p: float = SimConst.QUEUE_PATIENCE * w.level.patience_mult * patience_perk_mult * w.rng.randf_range(0.9, 1.1)
 		if not g.fav.has(r.uid):
 			p *= g.archetype.patience_mult_non_favorite
+		if g.vip_kind == VipSim.CELEBRITY:
+			p *= SimConst.CELEB_PATIENCE_MULT
 		g.patience = p
 		w.metrics["queue_joins"] += 1
 
@@ -321,7 +422,10 @@ func _queue_tick(w: SimWorld, g: Guest, dt: float) -> void:
 	if r == null:
 		g.mode = Guest.WANDER
 		return
-	g.patience -= dt * (SimConst.BROKEN_QUEUE_PATIENCE_MULT if r.broken else 1.0)
+	var drain: float = SimConst.BROKEN_QUEUE_PATIENCE_MULT if r.broken else 1.0
+	if g.cheer_until > w.time:
+		drain *= SimConst.AURA_PATIENCE_MULT   # an entertainer is juggling nearby
+	g.patience -= dt * drain
 	var dx: float = g.queue_x - g.x
 	if absf(dx) > 0.02:
 		var step: float = minf(absf(dx), 2.0 * dt)
@@ -338,6 +442,7 @@ func _patience_out(w: SimWorld, g: Guest, r: RoomRuntime) -> void:
 	r.queue.erase(g.id)
 	w.room_sim.reindex_queue(w, r)
 	g.queue_index = -1
+	g.queue_since = Guest.NOT_QUEUED
 	g.satisfaction = maxf(g.satisfaction - 10.0, 0.0)
 	g.angry_timer = 4.0
 	g.avoid[r.uid] = w.time + SimConst.AVOID_ROOM_TIME
@@ -345,6 +450,7 @@ func _patience_out(w: SimWorld, g: Guest, r: RoomRuntime) -> void:
 	g.eval_timer = 0.4
 	g.wander_pause = 0.5
 	w.metrics["patience_outs"] += 1
+	w.telemetry.on_patience_out(r.uid)
 	w.guest_patience_out.emit(g.id, r.uid)
 
 
@@ -352,6 +458,13 @@ func _patience_out(w: SimWorld, g: Guest, r: RoomRuntime) -> void:
 # Using rooms
 # ---------------------------------------------------------------------------------------------
 func start_use(w: SimWorld, g: Guest, r: RoomRuntime) -> void:
+	g.use_wait = 0.0 if g.queue_since == Guest.NOT_QUEUED else maxf(w.time - g.queue_since, 0.0)
+	g.queue_since = Guest.NOT_QUEUED
+	if g.vip_kind != &"":
+		if g.vip_kind == VipSim.CRITIC and r.def.category == &"food":
+			g.saw_mess = g.saw_mess or w.vip_sim.mess_at_door(w, r)
+		elif g.vip_kind == VipSim.CELEBRITY:
+			_celeb_enter(w, g, r)
 	g.target_uid = r.uid
 	g.mode = Guest.USE
 	g.state = Guest.USE
@@ -362,18 +475,21 @@ func start_use(w: SimWorld, g: Guest, r: RoomRuntime) -> void:
 	g.deck = r.deck
 	g.deck_f = float(r.deck)
 	g.queue_index = -1
-	g.use_dur = r.svc
-	g.use_timer = r.svc
+	var svc: float = r.svc * r.svc_mult   # a stationed chef shortens food service
+	g.use_dur = svc
+	g.use_timer = svc
 	g.use_applied = 0.0
 	for i in 4:
 		g.use_rates[i] = 0.0
 	for k in r.need_idx.size():
-		g.use_rates[r.need_idx[k]] = r.need_amt[k] / r.svc
+		g.use_rates[r.need_idx[k]] = r.need_amt[k] / svc
 	g.use_favorite = g.fav.has(r.uid)
 
 
 func _finish_use(w: SimWorld, g: Guest) -> void:
 	var r: RoomRuntime = w.room_sim.room(g.target_uid)
+	if g.vip_kind != &"":
+		_celeb_exit(w, g)
 	var rem: float = 1.0 - g.use_applied
 	if rem > 0.0:
 		for i in 4:
@@ -405,14 +521,17 @@ func _finish_use(w: SimWorld, g: Guest) -> void:
 	w.problems.try_mess(w, r)
 	if def.sick_chance > 0.0 and not g.sick and w.rng.randf() < def.sick_chance:
 		w.problems.infect(w, g)
-	if def.id == &"medbay" and g.sick:
+	if def.id == &"medbay" and g.is_ailing():
 		cure(w, g, true)
 	if def.satisfies.has(&"fun"):
 		g.last_fun_tag = def.fun_tag
+	if g.vip_kind == VipSim.CRITIC:
+		w.vip_sim.critic_meal(w, g, r)
 
 
 ## Room broke while `g` was using it.
 func eject_from_use(w: SimWorld, g: Guest, r: RoomRuntime) -> void:
+	_celeb_exit(w, g)
 	r.users.erase(g.id)
 	r.free_slot(g.id)
 	g.slot = -1
@@ -427,13 +546,98 @@ func eject_from_use(w: SimWorld, g: Guest, r: RoomRuntime) -> void:
 
 
 func cure(w: SimWorld, g: Guest, at_medbay: bool) -> void:
-	if not g.sick:
+	if not g.sick and not g.seasick:
 		return
 	g.sick = false
 	g.sick_timer = 0.0
+	g.seasick = false
+	g.seasick_timer = 0.0
 	if at_medbay:
 		g.satisfaction = minf(g.satisfaction + 3.0, 100.0)
+	w.staff_sim.on_target_resolved(w, &"sick", g.id)
 	w.guest_cured.emit(g.id)
+
+
+## Storm (docs/SPEC.md §13.7): the guest turns seasick for `duration` s. Not contagious; a medic can treat them like a sick guest.
+func make_seasick(w: SimWorld, g: Guest, duration: float) -> void:
+	if g.seasick or not g.is_aboard():
+		return
+	g.seasick = true
+	g.seasick_timer = duration
+	g.mood = &"seasick"
+	g.bubble_timer = 3.0
+	g.eval_timer = minf(g.eval_timer, 0.4)
+	w.metrics["seasick"] += 1
+	if w.staff_sim.jobs.find(&"sick", g.id) == null:
+		w.staff_sim.jobs.post(&"sick", g.deck, g.x, g.id)
+	w.guest_got_seasick.emit(g.id)
+
+
+# ---------------------------------------------------------------------------------------------
+# Closed rooms (storm) and the port-stop excursion
+# ---------------------------------------------------------------------------------------------
+## A room was shut under its users: everybody inside, in line or on the way leaves without penalty and wanders off.
+func evacuate_room(w: SimWorld, r: RoomRuntime) -> void:
+	for gid in r.users.duplicate():
+		var g: Guest = w.guest_by_id(gid)
+		if g != null and g.mode == Guest.USE and g.target_uid == r.uid:
+			send_away(w, g)
+	for gid in r.queue.duplicate():
+		var q: Guest = w.guest_by_id(gid)
+		if q != null and q.mode == Guest.QUEUE and q.target_uid == r.uid:
+			send_away(w, q)
+	for g in w.guests:
+		if g.mode == Guest.WALK and g.target_uid == r.uid and not g.vertical_busy():
+			send_away(w, g)
+	r.queue.clear()
+	r.incoming = 0
+
+
+## Drops whatever the guest was doing at its target room (using, queueing, walking there) and sends them wandering. No penalty.
+func send_away(w: SimWorld, g: Guest) -> void:
+	var was_vertical: bool = g.vertical_busy()
+	_leave_current(w, g)
+	for i in 4:
+		g.use_rates[i] = 0.0
+	g.slot = -1
+	g.queue_index = -1
+	g.queue_since = Guest.NOT_QUEUED
+	g.target_uid = -1
+	if not was_vertical:
+		g.clear_route()
+	g.mode = Guest.WANDER
+	g.state = Guest.WANDER
+	g.eval_timer = w.rng.randf_range(0.3, 0.9)
+	g.wander_pause = 0.2
+
+
+## Port stop: the guest goes ashore on the excursion. They leave whatever they were doing, give up their bed and walk to the
+## gangway; they keep their current satisfaction in the rating and are not counted as lost.
+func begin_excursion(w: SimWorld, g: Guest) -> void:
+	if not g.is_aboard() or g.mode == Guest.BOARDING:
+		return
+	if g.vertical_busy():
+		g.excursion_pending = true   # finishes the climb / ride first
+		return
+	_leave_current(w, g)
+	for i in 4:
+		g.use_rates[i] = 0.0
+	g.slot = -1
+	g.queue_index = -1
+	g.queue_since = Guest.NOT_QUEUED
+	g.excursion = true
+	g.excursion_pending = false
+	w.room_sim.release_bed(g)
+	g.clear_route()
+	g.mode = Guest.EXCURSION
+	g.state = Guest.EXCURSION
+	g.mood = &"happy"
+	g.bubble_timer = 0.0
+	g.hold_until = 0.0
+	w.metrics["excursions"] += 1
+	if not g.plan_route(w.grid, w.grid.hull.gangway_deck, SimConst.GANGWAY_X):
+		g.mode = Guest.GONE
+		g.state = Guest.GONE
 
 
 # ---------------------------------------------------------------------------------------------
@@ -451,6 +655,7 @@ func _leave_current(w: SimWorld, g: Guest) -> void:
 			r.users.erase(g.id)
 			r.free_slot(g.id)
 			g.slot = -1
+			_celeb_exit(w, g)
 		Guest.WALK:
 			r.incoming = maxi(r.incoming - 1, 0)
 		_:
@@ -461,6 +666,10 @@ func _begin_storm(w: SimWorld, g: Guest) -> void:
 	_leave_current(w, g)
 	g.satisfaction = 0.0
 	g.lost = true
+	if g.vip_kind != &"":
+		w.vip_sim.on_leave(w, g)
+	if g.group_id >= 0:
+		_group_storm_penalty(w, g)
 	g.queue_index = -1
 	for i in 4:
 		g.use_rates[i] = 0.0
@@ -482,8 +691,8 @@ func _begin_storm(w: SimWorld, g: Guest) -> void:
 # ---------------------------------------------------------------------------------------------
 func _slow(w: SimWorld, g: Guest, dt: float) -> void:
 	var mode: StringName = g.mode
-	if mode == Guest.BOARDING or mode == Guest.STORM_OFF:
-		return
+	if mode == Guest.BOARDING or mode == Guest.STORM_OFF or mode == Guest.INSPECT or mode == Guest.EXCURSION:
+		return   # (an inspecting VIP is all business: no needs, no mood until the walk-round is over)
 	if g.angry_timer > 0.0:
 		g.angry_timer -= dt
 	var ev: EventDirector = w.events
@@ -505,9 +714,14 @@ func _slow(w: SimWorld, g: Guest, dt: float) -> void:
 		n2 += ur[2] * dt
 		n3 += ur[3] * dt
 		g.use_applied += dt / maxf(g.use_dur, 0.01)
+	if g.seasick:
+		n3 -= SimConst.SEASICK_HYGIENE_RATE * dt
 	var top: bool = g.deck == _top_deck
 	if top and ev.top_deck_fun_rate > 0.0 and mode == Guest.WANDER:
 		n2 += ev.top_deck_fun_rate * dt
+	var cheered: bool = mode == Guest.QUEUE and g.cheer_until > w.time
+	if cheered:
+		n2 += SimConst.AURA_FUN_RATE * dt
 	n0 = clampf(n0, 0.0, 100.0)
 	n1 = clampf(n1, 0.0, 100.0)
 	n2 = clampf(n2, 0.0, 100.0)
@@ -543,15 +757,19 @@ func _slow(w: SimWorld, g: Guest, dt: float) -> void:
 		s += SimConst.SAT_OK_RATE
 	if g.sick:
 		s -= 0.6
+	if g.seasick:
+		s -= SimConst.SEASICK_SAT_RATE
 	if g.cabin_uid < 0:
 		s -= 0.15
 	if mode == Guest.QUEUE:
-		s -= 0.15
+		s += SimConst.AURA_SAT_RATE if cheered else -0.15
 		var qr: RoomRuntime = w.room_sim.room(g.target_uid)
 		if qr != null and qr.broken:
 			s -= SimConst.BROKEN_QUEUE_SAT_DRAIN
 	if not w.messes.is_empty() and w.problems.near_mess(g.deck, g.x):
 		s -= 0.5
+	if g.group_id >= 0 and _group_together(w, g):
+		s += SimConst.GROUP_TOGETHER_RATE
 	if top and _cold_drain > 0.0 and not ev.cold_suspended:
 		s -= _cold_drain
 	var sat: float = clampf(g.satisfaction + s * dt, 0.0, 100.0)
@@ -570,10 +788,16 @@ func _slow(w: SimWorld, g: Guest, dt: float) -> void:
 		g.sick_timer -= dt
 		if g.sick_timer <= 0.0:
 			cure(w, g, false)
+	if g.seasick:
+		g.seasick_timer -= dt
+		if g.seasick_timer <= 0.0:
+			g.seasick = false   # sea legs are back (the medic's job for this guest disappears with the flag)
 	# Mood
 	var m: StringName
 	if g.sick:
 		m = &"sick"
+	elif g.seasick:
+		m = &"seasick"
 	elif g.angry_timer > 0.0:
 		m = &"angry"
 	elif lowest < 25.0:
@@ -596,3 +820,127 @@ func _slow(w: SimWorld, g: Guest, dt: float) -> void:
 		g.bubble_timer = 3.0 if m != &"ok" else 0.0
 	elif g.bubble_timer > 0.0:
 		g.bubble_timer = maxf(g.bubble_timer - dt, 0.0)
+
+
+# ---------------------------------------------------------------------------------------------
+# Groups (docs/SPEC.md §13.6)
+# ---------------------------------------------------------------------------------------------
+func _leader_of(w: SimWorld, g: Guest) -> Guest:
+	if g.group_id < 1 or g.group_id > w.groups.size():
+		return null
+	var grp: GuestGroup = w.groups[g.group_id - 1]
+	if grp.members.is_empty():
+		return null
+	var lead: Guest = w.guest_by_id(grp.members[0])
+	if lead == null or lead == g or not lead.is_aboard():
+		return null
+	return lead
+
+
+## An idle follower adopts the leader's current target when it satisfies one of the follower's needs below 75
+## (cabins only when it is the follower's own cabin, the medbay only for the sick). Returns true if it set off.
+func _follow_leader(w: SimWorld, g: Guest) -> bool:
+	var lead: Guest = _leader_of(w, g)
+	if lead == null or lead.target_uid < 0:
+		return false
+	if lead.mode != Guest.WALK and lead.mode != Guest.QUEUE and lead.mode != Guest.USE:
+		return false
+	var r: RoomRuntime = w.room_sim.room(lead.target_uid)
+	if r == null or r.broken or r.closed:
+		return false
+	var is_cabin: bool = r.def.id == &"cabin"
+	if is_cabin and r.uid != g.cabin_uid:
+		return false
+	if r.def.id == &"medbay" and not g.is_ailing():
+		return false
+	var wants: bool = false
+	for k in r.need_idx.size():
+		if g.nv[r.need_idx[k]] < SimConst.GROUP_ADOPT_NEED:
+			wants = true
+			break
+	if not wants and not (r.def.id == &"medbay" and g.is_ailing()):
+		return false
+	if not g.avoid.is_empty() and g.avoid.has(r.uid) and float(g.avoid[r.uid]) > w.time:
+		return false
+	var graph: WalkGraph = w.grid.graph
+	if graph.cost(graph.node(g.deck, int(g.x)), r.door_node) >= WalkGraph.UNREACHABLE * 0.5:
+		return false
+	w.metrics["group_follows"] += 1
+	_go_to_room(w, g, r)
+	return g.mode == Guest.WALK and g.target_uid == r.uid
+
+
+## A strolling follower stays close behind its leader (same deck: a spot just behind, other deck: that deck).
+func _wander_with_leader(w: SimWorld, g: Guest) -> bool:
+	var lead: Guest = _leader_of(w, g)
+	if lead == null:
+		return false
+	if lead.vertical_busy() or lead.mode == Guest.BOARDING:
+		g.wander_pause = 0.4
+		return true
+	var tx: float = clampf(lead.x - float(lead.facing) * 0.6 * float(g.group_slot), 0.5, float(w.grid.hull.width) - 0.5)
+	if lead.deck == g.deck and absf(g.x - tx) < 0.5:
+		g.wander_pause = 0.5
+		return true
+	if g.plan_route(w.grid, lead.deck, tx):
+		return true
+	return false
+
+
+## The leader just set off for a room: followers re-evaluate right away (staggered by their slot) so the group moves together.
+func _nudge_followers(w: SimWorld, lead: Guest) -> void:
+	var grp: GuestGroup = w.groups[lead.group_id - 1]
+	for i in range(1, grp.members.size()):
+		var f: Guest = w.guest_by_id(grp.members[i])
+		if f != null and f.mode == Guest.WANDER and not f.vertical_busy():
+			f.eval_timer = minf(f.eval_timer, 0.15 + 0.12 * float(i))
+
+
+## True when another aboard member stands within GROUP_TOGETHER_RADIUS cells on the same deck.
+func _group_together(w: SimWorld, g: Guest) -> bool:
+	if g.group_id < 1 or g.group_id > w.groups.size():
+		return false
+	var grp: GuestGroup = w.groups[g.group_id - 1]
+	for mid in grp.members:
+		if mid == g.id:
+			continue
+		var o: Guest = w.guest_by_id(mid)
+		if o == null or not o.is_aboard() or o.mode == Guest.BOARDING:
+			continue
+		if int(round(o.deck_f)) == int(round(g.deck_f)) and absf(o.x - g.x) <= SimConst.GROUP_TOGETHER_RADIUS:
+			return true
+	return false
+
+
+## A member storming off upsets the rest of the group.
+func _group_storm_penalty(w: SimWorld, g: Guest) -> void:
+	if g.group_id < 1 or g.group_id > w.groups.size():
+		return
+	for mid in w.groups[g.group_id - 1].members:
+		if mid == g.id:
+			continue
+		var o: Guest = w.guest_by_id(mid)
+		if o == null or not o.is_aboard():
+			continue
+		o.satisfaction = maxf(o.satisfaction - SimConst.GROUP_STORM_SAT, 0.0)
+		w.metrics["group_storm_hits"] += 1
+
+
+# ---------------------------------------------------------------------------------------------
+# Celebrity pull
+# ---------------------------------------------------------------------------------------------
+func _celeb_enter(w: SimWorld, g: Guest, r: RoomRuntime) -> void:
+	_celeb_exit(w, g)
+	g.celeb_room = r.uid
+	r.celeb_users += 1
+	w.room_sim.refresh_room_appeal(w, r)
+
+
+func _celeb_exit(w: SimWorld, g: Guest) -> void:
+	if g.celeb_room < 0:
+		return
+	var r: RoomRuntime = w.room_sim.room(g.celeb_room)
+	g.celeb_room = -1
+	if r != null:
+		r.celeb_users = maxi(r.celeb_users - 1, 0)
+		w.room_sim.refresh_room_appeal(w, r)

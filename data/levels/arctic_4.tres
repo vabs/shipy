@@ -8,23 +8,23 @@ id = &"arctic_4"
 index = 4
 campaign_index = 10
 display_name = "Penguin Parade"
-blurb = "A bigger crowd and fussier tastes. Keep the rinks spinning."
+blurb = "A bigger crowd and fussier tastes. Refit at Penguin Point and keep the rinks spinning."
 destination = &"arctic"
 hull = &"medium"
 budget = 4800
 ticket_price = 29
 duration = 250.0
 waves = Array[Dictionary]([{
-"count": 10,
+"count": 8,
 "t": 0.0
 }, {
 "count": 7,
 "t": 35.0
 }, {
-"count": 7,
+"count": 6,
 "t": 75.0
 }, {
-"count": 6,
+"count": 5,
 "t": 115.0
 }, {
 "count": 4,
@@ -52,14 +52,29 @@ scheduled_events = Array[Dictionary]([{
 random_event_interval = 90.0
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 29
+"value": 58
 }, {
-"type": "profit",
-"value": 1650
+"type": "served",
+"value": 210
 }, {
 "type": "rating",
-"value": 65
+"value": 82
 }])
-mess_mult = 1.21
-health_mult = 0.83
-decay_mult = 1.12
+mess_mult = 1.04
+health_mult = 0.95
+decay_mult = 1.05
+staff_fatigue = true
+vips = Array[Dictionary]([{
+"kind": &"celebrity",
+"t": 40.0
+}, {
+"kind": &"critic",
+"t": 115.0
+}])
+group_ratio = 0.38
+port_stop = {
+"board": 8,
+"disembark": 0.3,
+"name": "Penguin Point",
+"t": 130.0
+}

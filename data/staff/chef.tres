@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="StaffDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/staff_def.gd" id="1_cps1x"]
+
+[resource]
+script = ExtResource("1_cps1x")
+id = &"chef"
+display_name = "Chef"
+handles = &"aura"
+wage = 65
+work_time = 1.0
+speed = 2.8
+unlock_level = 5
+description = "Speeds up a food room and keeps it tidy"

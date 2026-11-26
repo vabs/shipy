@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_ta8o5"]
+
+[resource]
+script = ExtResource("1_ta8o5")
+id = &"crew_quarters"
+display_name = "Crew Quarters"
+category = &"service"
+width = 2
+capacity = 2
+service_time = 6.0
+cost = 220
+upkeep = 2.0
+power = 1
+water = 1
+unlock_level = 7
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 1,
+"cost": 132,
+"speed_mult": 1.25
+}, {
+"capacity_add": 1,
+"cost": 198,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(0.42352942, 0.54901963, 0.8352941, 1),
+"wall": Color(0.91764706, 0.8901961, 0.9490196, 1)
+}
+description = "Bunks where tired crew recharge. Guests keep out."

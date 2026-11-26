@@ -52,14 +52,23 @@ scheduled_events = Array[Dictionary]([{
 random_event_interval = 80.0
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 46
+"value": 55
 }, {
 "type": "served",
-"value": 240
+"value": 250
 }, {
 "type": "rating",
-"value": 74
+"value": 82
 }])
-mess_mult = 1.25
-health_mult = 0.8
-decay_mult = 1.1
+mess_mult = 1.07
+health_mult = 0.91
+decay_mult = 1.03
+staff_fatigue = true
+vips = Array[Dictionary]([{
+"kind": &"critic",
+"t": 40.0
+}, {
+"kind": &"inspector",
+"t": 95.0
+}])
+group_ratio = 0.33

@@ -48,8 +48,11 @@ var selected_staff_id: int = -1
 var hold_room_uid: int = -1
 ## Ship-local polyline of the route preview for the selected crew member.
 var path_points: PackedVector2Array = PackedVector2Array()
-## &"mess" | &"repair" | &"" -> which problems glow as valid targets for the selected crew member.
+## &"mess" | &"repair" | &"sick" | &"ghost" | &"perform" | &"station" | &"" -> what glows as a valid target for the
+## selected crew member (their own job kind or aura order).
 var target_kind: StringName = &""
+## The selected crew member can also be sent to rest: crew quarters with a free bunk glow too.
+var rest_targets: bool = false
 
 # ---- per-frame prepared data --------------------------------------------------------------------
 var g_feet: PackedVector2Array = PackedVector2Array()
@@ -59,6 +62,9 @@ var gh_pos: PackedVector2Array = PackedVector2Array()
 var _lanes: Array[PackedInt32Array] = []
 var _riders: PackedInt32Array = PackedInt32Array()
 var _room_users: PackedInt32Array = PackedInt32Array()
+## Indices into world.staff of crew asleep in a crew quarters bunk (drawn inside the room) and their bunk feet.
+var _sleepers: PackedInt32Array = PackedInt32Array()
+var _sleeper_feet: PackedVector2Array = PackedVector2Array()
 var _rects: Dictionary = {}
 var _car_f: Dictionary = {}
 var _car_lead: Dictionary = {}
@@ -70,6 +76,7 @@ var _seen_t: Dictionary = {}
 var _go: Dictionary = {}
 var _so: Dictionary = {}
 var _last_room_state: Dictionary = {}
+var _closed_t: Dictionary = {}
 
 var _n_occ: _Occupants
 var _n_corr: _Corridor
@@ -137,11 +144,31 @@ func update(_delta: float) -> void:
 	colorblind = Settings.colorblind
 	_update_zoom_k()
 	_prepare()
+	_note_inspectors()
 	_push_room_states(_delta)
 	_n_occ.queue_redraw()
 	_n_corr.queue_redraw()
 	_n_bub.queue_redraw()
 	fx.queue_redraw()
+
+
+## "Noted!" pops up whenever the inspector writes a problem on his clipboard.
+var _inspector_seen: Dictionary = {}
+
+
+func _note_inspectors() -> void:
+	if world.vip_sim.members.is_empty():
+		return
+	for v in world.vip_sim.members:
+		if v.vip_kind != VipSim.INSPECTOR:
+			continue
+		var n: int = int(v.vip_score)
+		var prev: int = int(_inspector_seen.get(v.id, 0))
+		if n > prev:
+			_inspector_seen[v.id] = n
+			var p: Vector2 = local_pos_of(&"guest", v.id)
+			if p != Vector2.INF and fx != null:
+				fx.spawn(&"text", p + Vector2(0, -30), 1.2, {"amount": 0, "text": "Noted!", "color": Palette.CORAL})
 
 
 func _update_zoom_k() -> void:
@@ -180,6 +207,8 @@ func _prepare() -> void:
 		_lanes[l].resize(0)
 	_riders.resize(0)
 	_room_users.resize(0)
+	_sleepers.resize(0)
+	_sleeper_feet.resize(0)
 	_pods.clear()
 	for i in n:
 		var g: Guest = world.guests[i]
@@ -220,6 +249,16 @@ func _prepare() -> void:
 	for i in ns:
 		var s: StaffMember = world.staff[i]
 		s_feet[i] = SimConst.to_px(_ix(s.prev_x, s.x, a), _ix(s.prev_deck_f, s.deck_f, a))
+		if s.state == &"perform":
+			s_feet[i].y += 3.0   # the entertainer works the front of the queue
+		elif s.state == &"rest":
+			var q: RoomRuntime = world.room_by_uid(s.rest_uid)
+			if q != null and _rects.has(q.uid):
+				var slot: int = maxi(q.slot_of(s.id), 0)
+				var fp: Vector2 = RoomArt.slot_position(&"crew_quarters", _rects[q.uid], slot, q.cap)
+				s_feet[i] = fp
+				_sleepers.append(i)
+				_sleeper_feet.append(fp)
 	var ng: int = world.ghosts.size()
 	gh_pos.resize(ng)
 	for i in ng:
@@ -253,6 +292,9 @@ func _prepare_bubbles() -> void:
 			icon = &"sick"
 			prio = 90
 			problem = true
+		elif g.seasick:
+			icon = &"seasick"   # storm: its own face, prominent but not a "needs you" ring (many guests may be queasy at once)
+			prio = 80
 		elif cat == C_ROOM:
 			continue
 		else:
@@ -284,7 +326,7 @@ func _prepare_bubbles() -> void:
 			bs = {"icon": icon, "t0": anim_t}
 			_bub_state[g.id] = bs
 		# ambient bubbles (needs, hearts, frowns) are smaller / fainter than problems so "needs you" reads first
-		var sc: float = 1.12 if problem else (0.7 if soft else 0.88)
+		var sc: float = 1.12 if problem else (0.7 if soft else (1.0 if icon == &"seasick" else 0.88))
 		if not problem:
 			alpha *= 0.78 if soft else 0.94
 		cand.append({"idx": i, "icon": icon, "prio": prio, "alpha": alpha, "t": anim_t - float(bs["t0"]), "soft": soft,
@@ -366,6 +408,10 @@ func _update_car(r: RoomRuntime, delta: float) -> void:
 # drawing
 # =================================================================================================
 func _prop_of(g: Guest) -> StringName:
+	match g.vip_kind:
+		&"critic": return &"beret"
+		&"celebrity": return &"sunglasses"
+		&"inspector": return &"inspector_cap"
 	return g.archetype.prop
 
 
@@ -376,6 +422,13 @@ func _setup_guest_opts(g: Guest, pose: StringName, facing: int, wp: float, hl: i
 	_go["pose"] = pose
 	_go["walk_phase"] = wp
 	_go["sick"] = g.sick
+	_go["seasick"] = g.seasick
+	_go["body_scale"] = g.archetype.body_scale
+	_go["vip"] = g.vip_kind
+	if g.group_id >= 0:
+		_go["group_color"] = Palette.group_color(g.group_id)
+	else:
+		_go.erase("group_color")
 	_go["colorblind"] = colorblind
 	_go["t"] = anim_t
 	_go["highlight"] = hl
@@ -411,6 +464,16 @@ func _draw_occupants(ci: CanvasItem) -> void:
 		if k < 1.0:
 			o["scale"] = 0.75 + 0.25 * U.ease_out_back(k)
 		GuestArt.draw_guest(ci, g_feet[i], o)
+	for k in _sleepers.size():
+		var s: StaffMember = world.staff[_sleepers[k]]
+		var q: RoomRuntime = world.room_by_uid(s.rest_uid)
+		if q == null or not _rects.has(q.uid):
+			continue
+		var slot: int = maxi(q.slot_of(s.id), 0)
+		var so: Dictionary = {"role": s.role, "pose": &"sleep", "t": anim_t, "scale": 1.0,
+				"facing": RoomArt.slot_facing(&"crew_quarters", _rects[q.uid], slot, q.cap), "skip_zzz": true,
+				"highlight": 2 if s.id == selected_staff_id else (1 if (hover_kind == &"staff" and hover_id == s.id) else 0)}
+		GuestArt.draw_staff(ci, _sleeper_feet[k], so)
 
 
 func _draw_guest_corridor(ci: CanvasItem, i: int) -> void:
@@ -444,7 +507,55 @@ func _draw_guest_corridor(ci: CanvasItem, i: int) -> void:
 	GuestArt.draw_guest(ci, feet, o)
 
 
+## Storm: closed top-deck rooms get a dim veil, hazard tape across the doorway and a hanging "Closed" sign.
+func _draw_closed_rooms(ci: CanvasItem) -> void:
+	var any: bool = false
+	for r in world.room_sim.service_rooms:
+		if r.closed and _rects.has(r.uid):
+			any = true
+			if not _closed_t.has(r.uid):
+				_closed_t[r.uid] = Time.get_ticks_msec() * 0.001   # (real time: the pop-in also plays while paused)
+		elif _closed_t.has(r.uid):
+			_closed_t.erase(r.uid)
+	if not any:
+		return
+	for r in world.room_sim.service_rooms:
+		if not r.closed or not _rects.has(r.uid):
+			continue
+		var rc: Rect2 = _rects[r.uid]
+		var k: float = clampf((Time.get_ticks_msec() * 0.001 - float(_closed_t[r.uid])) / 0.5, 0.0, 1.0)
+		var kk: float = U.ease_out_back(k)
+		U.rr(ci, rc.grow(-1.0), 6.0, Color(0.1, 0.15, 0.3, 0.46 * k))
+		# hazard tape
+		var band := Rect2(rc.position.x + 2.0, rc.end.y - 38.0, rc.size.x - 4.0, 13.0)
+		U.rect(ci, band, Color(Palette.NAVY_DARK.r, Palette.NAVY_DARK.g, Palette.NAVY_DARK.b, k))
+		var x: float = band.position.x - band.size.y
+		var h: float = band.size.y
+		var flip: bool = false
+		while x < band.end.x:
+			var p0: float = clampf(x, band.position.x, band.end.x)
+			var p1: float = clampf(x + 9.0, band.position.x, band.end.x)
+			var p2: float = clampf(x + 9.0 + h, band.position.x, band.end.x)
+			var p3: float = clampf(x + h, band.position.x, band.end.x)
+			U.poly(ci, PackedVector2Array([Vector2(p0, band.end.y), Vector2(p1, band.end.y), Vector2(p2, band.position.y), Vector2(p3, band.position.y)]), Color(Palette.SUN.r, Palette.SUN.g, Palette.SUN.b, k))
+			x += 18.0
+			flip = not flip
+		# posts at both ends
+		for px in [band.position.x + 1.0, band.end.x - 1.0]:
+			U.rr(ci, Rect2(px - 3.0, band.position.y - 6.0, 6.0, 26.0), 2.0, Color(Palette.NAVY.r, Palette.NAVY.g, Palette.NAVY.b, k))
+		# the sign
+		var sc: Vector2 = Vector2(rc.get_center().x, rc.position.y + 30.0 + (1.0 - kk) * -14.0)
+		var sw: float = 70.0
+		var sh: float = 22.0
+		U.rr(ci, Rect2(sc.x - sw * 0.5, sc.y - sh * 0.5 + 2.0, sw, sh), 7.0, Color(0.05, 0.08, 0.16, 0.3 * k))
+		U.rr(ci, Rect2(sc.x - sw * 0.5, sc.y - sh * 0.5, sw, sh), 7.0, Color(Palette.CREAM.r, Palette.CREAM.g, Palette.CREAM.b, k))
+		U.rr_outline(ci, Rect2(sc.x - sw * 0.5, sc.y - sh * 0.5, sw, sh), 7.0, Color(Palette.CORAL.r, Palette.CORAL.g, Palette.CORAL.b, k), 2.0)
+		IconArt.draw_icon(ci, &"storm", Vector2(sc.x - sw * 0.5 + 12.0, sc.y), 17.0, anim_t, colorblind)
+		U.text(ci, "Closed", Vector2(sc.x - sw * 0.5 + 24.0, sc.y + 4.6), 13, Color(Palette.CORAL_DARK.r, Palette.CORAL_DARK.g, Palette.CORAL_DARK.b, k), HORIZONTAL_ALIGNMENT_LEFT, -1.0, U.font_bold())
+
+
 func _draw_corridor(ci: CanvasItem) -> void:
+	_draw_closed_rooms(ci)
 	# messes lie on the floor (under everybody)
 	for m in world.messes:
 		ProblemArt.draw_mess(ci, SimConst.to_px(m.x, float(m.deck)), m.id % 4, minf(m.clean_progress, 1.0), anim_t, colorblind)
@@ -460,16 +571,27 @@ func _draw_corridor(ci: CanvasItem) -> void:
 	# crew
 	for i in mini(world.staff.size(), s_feet.size()):
 		var s: StaffMember = world.staff[i]
+		if s.state == &"rest":
+			continue   # asleep inside the crew quarters: drawn with the room occupants
 		var feet: Vector2 = s_feet[i]
 		var moving: bool = absf(s.x - s.prev_x) > 0.0004 or absf(s.deck_f - s.prev_deck_f) > 0.0004
 		var pose: StringName = &"stand"
 		var wp: float = feet.x * 0.087
-		if s.state == &"work":
-			pose = &"work"
-		elif moving or s.travel_mode == Walker.T_CLIMB:
-			pose = &"walk"
-			if s.travel_mode == Walker.T_CLIMB:
-				wp = anim_t * 10.0
+		match s.state:
+			&"work":
+				pose = &"work"
+			&"perform":
+				pose = &"perform"
+			&"station":
+				pose = &"cook"
+			&"nap":
+				pose = &"sleep"
+			_:
+				if moving or s.travel_mode == Walker.T_CLIMB:
+					pose = &"walk"
+					if s.travel_mode == Walker.T_CLIMB:
+						wp = anim_t * 10.0
+		_so["tired"] = s.is_tired() and s.state != &"nap"
 		_so["role"] = s.role
 		_so["pose"] = pose
 		_so["facing"] = s.facing
@@ -521,21 +643,91 @@ func _arc(ci: CanvasItem, c: Vector2, r: float, a0: float, a1: float, color: Col
 	ci.draw_arc(c, r, a0, a1, n, U.col(color), w, true)
 
 
+## Hovering / pinning a member of a couple or family: a soft ring under every member and a dashed heart link from the
+## leader to each of them, all in the group's colour.
+func _draw_group_links(ci: CanvasItem) -> void:
+	var done: Dictionary = {}
+	var ids: Array[int] = [pinned_guest_id]
+	if hover_kind == &"guest":
+		ids.append(hover_id)
+	for gid in ids:
+		if gid < 1:
+			continue
+		var g: Guest = world.guest_by_id(gid)
+		if g == null or g.group_id < 1 or g.group_id > world.groups.size() or done.has(g.group_id):
+			continue
+		done[g.group_id] = true
+		var col: Color = Palette.group_color(g.group_id)
+		var pts: Array[Vector2] = []
+		for mid in world.groups[g.group_id - 1].members:
+			var i: int = mid - 1
+			if i < 0 or i >= g_cat.size() or g_cat[i] == C_HIDDEN:
+				continue
+			var mg: Guest = world.guests[i]
+			var sc: float = mg.archetype.body_scale
+			var f: Vector2 = g_feet[i]
+			U.ellipse(ci, f + Vector2(0, 0.5), 12.0 * sc, 3.8 * sc, Color(col.r, col.g, col.b, 0.28))
+			U.dashed_ring(ci, f + Vector2(0, 0.5), 12.0 * sc, 3.8 * sc, col, 1.8, anim_t * 0.6, 10)
+			pts.append(f + Vector2(0, -GuestArt.HEIGHT * sc * 0.62))
+		for k in range(1, pts.size()):
+			var a: Vector2 = pts[0]
+			var b: Vector2 = pts[k]
+			var ctrl: Vector2 = (a + b) * 0.5 + Vector2(0, -10.0 - a.distance_to(b) * 0.18)
+			var curve := PackedVector2Array()
+			for j in range(13):
+				var u: float = float(j) / 12.0
+				curve.append(a.lerp(ctrl, u).lerp(ctrl.lerp(b, u), u))
+			_dashed_polyline(ci, curve, Color(col.r, col.g, col.b, 0.85), 2.0, 6.0, 4.0, anim_t * 14.0)
+			var mid: Vector2 = curve[6] + Vector2(0, -1.5 + sin(anim_t * 3.0 + float(k)) * 1.4)
+			GuestArt.draw_heart(ci, mid, 5.2 * clampf(zoom_k, 0.7, 1.2), col)
+
+
+## Bubbles sit above the head: kids are shorter, VIPs carry a floating star that the bubble stacks over.
+func _bubble_dy(g: Guest) -> float:
+	var dy: float = -GuestArt.HEIGHT * g.archetype.body_scale - 5.0
+	if g.vip_kind != &"":
+		dy -= 13.0
+	return dy
+
+
 func _draw_bubbles(ci: CanvasItem) -> void:
 	var kk: float = zoom_k
-	var bubble_dy: float = -GuestArt.HEIGHT - 5.0
+	_draw_group_links(ci)
 	# --- valid-target glow for a selected crew member
-	if selected_staff_id >= 0 and target_kind != &"":
+	if selected_staff_id >= 0 and (target_kind != &"" or rest_targets):
 		var pulse: float = U.pulse(anim_t, 1.4)
-		if target_kind == &"mess":
-			for m in world.messes:
-				var p: Vector2 = SimConst.to_px(m.x, float(m.deck)) + Vector2(0, -4)
-				U.dashed_ring(ci, p, 22.0 + pulse * 2.0, 9.0 + pulse, Color(Palette.SUN.r, Palette.SUN.g, Palette.SUN.b, 0.95), 2.4, anim_t * 0.6, 12)
-		else:
-			for r in world.rooms:
-				if r.broken and _rects.has(r.uid):
-					var rc: Rect2 = _rects[r.uid]
-					U.rr_outline(ci, rc.grow(1.0 + pulse * 2.0), 5.0, Color(Palette.SUN.r, Palette.SUN.g, Palette.SUN.b, 0.5 + 0.4 * pulse), 3.0)
+		var glow := Color(Palette.SUN.r, Palette.SUN.g, Palette.SUN.b, 0.95)
+		match target_kind:
+			&"mess":
+				for m in world.messes:
+					var p: Vector2 = SimConst.to_px(m.x, float(m.deck)) + Vector2(0, -4)
+					U.dashed_ring(ci, p, 22.0 + pulse * 2.0, 9.0 + pulse, glow, 2.4, anim_t * 0.6, 12)
+			&"sick":
+				for i in mini(world.guests.size(), g_feet.size()):
+					var sg: Guest = world.guests[i]
+					if sg.is_ailing() and g_cat[i] != C_HIDDEN:
+						U.dashed_ring(ci, g_feet[i] + Vector2(0, -2), 14.0 + pulse * 2.0, 6.0 + pulse, glow, 2.4, anim_t * 0.6, 10)
+			&"ghost":
+				for i in mini(world.ghosts.size(), gh_pos.size()):
+					U.dashed_ring(ci, gh_pos[i] + Vector2(0, -16), 20.0 + pulse * 2.0, 24.0 + pulse * 2.0, glow, 2.4, anim_t * 0.6, 12)
+			&"perform", &"station":
+				for r in world.rooms:
+					if not _rects.has(r.uid) or not r.def.is_service_room() or r.def.id == &"cabin":
+						continue
+					if target_kind == &"station" and r.def.category != &"food":
+						continue
+					var strong: bool = target_kind == &"station" or r.queue.size() >= SimConst.ENTERTAINER_MIN_QUEUE
+					var rc2: Rect2 = _rects[r.uid]
+					U.rr_outline(ci, rc2.grow(1.0 + pulse * 2.0), 5.0, Color(glow.r, glow.g, glow.b, (0.5 + 0.4 * pulse) if strong else 0.3), 3.0 if strong else 2.0)
+			&"repair":
+				for r in world.rooms:
+					if r.broken and _rects.has(r.uid):
+						var rc: Rect2 = _rects[r.uid]
+						U.rr_outline(ci, rc.grow(1.0 + pulse * 2.0), 5.0, Color(glow.r, glow.g, glow.b, 0.5 + 0.4 * pulse), 3.0)
+		if rest_targets:
+			for q in world.room_sim.crew_rooms:
+				if _rects.has(q.uid) and q.free_bunks() > 0:
+					U.rr_outline(ci, (_rects[q.uid] as Rect2).grow(1.0 + pulse * 2.0), 5.0, Color(Palette.MINT.r, Palette.MINT.g, Palette.MINT.b, 0.55 + 0.4 * pulse), 3.0)
 	# --- ghosts: pulsing "needs you" ring (the sprite itself is drawn with the corridor layer)
 	for i in mini(world.ghosts.size(), gh_pos.size()):
 		var gh: Ghost = world.ghosts[i]
@@ -621,11 +813,21 @@ func _draw_bubbles(ci: CanvasItem) -> void:
 				continue
 			var feet: Vector2 = g_feet[int(b["idx"])]
 			var bk: float = kk * float(b["scale"])
-			var anchor: Vector2 = feet + Vector2(0, bubble_dy)
+			var anchor: Vector2 = feet + Vector2(0, _bubble_dy(world.guests[int(b["idx"])]))
 			if want_problem and float(b["t"]) > 0.28:
 				var gi: int = int(b["idx"])
 				_ping(ci, anchor + Vector2(0, -21.0 * bk), 15.0 * bk, float(gi) * 0.31, float(b["alpha"]))
 			IconArt.draw_bubble(ci, anchor, b["icon"], float(b["t"]), float(b["alpha"]), bk, colorblind, want_problem)
+	# --- sleepers in the crew quarters: z z z over the room's blankets
+	for k in _sleepers.size():
+		var sl: StaffMember = world.staff[_sleepers[k]]
+		GuestArt.draw_zzz(ci, _sleeper_feet[k] + Vector2(-2.0, -22.0), anim_t, float(sl.id) * 0.9)
+	# --- tired crew: a "zzz" bubble above the hat
+	for i in mini(world.staff.size(), s_feet.size()):
+		var ts: StaffMember = world.staff[i]
+		if ts.is_tired() and ts.state != &"rest" and ts.state != &"nap":
+			var ta: Vector2 = s_feet[i] + Vector2(0, -GuestArt.staff_top(ts.role) - 3.0)
+			IconArt.draw_bubble(ci, ta, &"zzz", anim_t + float(ts.id) * 0.7, 1.0, kk * 0.8, colorblind, false)
 	# --- route preview + selected crew ring text
 	if path_points.size() >= 2:
 		_dashed_polyline(ci, path_points, Color(Palette.SUN.r, Palette.SUN.g, Palette.SUN.b, 0.95), 3.0, 9.0, 7.0, anim_t * 24.0)

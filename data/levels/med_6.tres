@@ -8,7 +8,7 @@ id = &"med_6"
 index = 6
 campaign_index = 6
 display_name = "Mediterranean Meltdown"
-blurb = "Everything happens at once. Hold on to your hat."
+blurb = "Everything happens at once, and families with kids come aboard. Hold on to your hat."
 hull = &"medium"
 budget = 4700
 ticket_price = 28
@@ -51,14 +51,19 @@ scheduled_events = Array[Dictionary]([{
 random_event_interval = 75.0
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 29
+"value": 34
 }, {
 "type": "rating",
-"value": 62
+"value": 61
 }, {
 "type": "served",
-"value": 160
+"value": 180
 }])
-mess_mult = 1.24
-health_mult = 0.81
-decay_mult = 0.96
+mess_mult = 0.96
+health_mult = 1.01
+decay_mult = 0.94
+vips = Array[Dictionary]([{
+"kind": &"critic",
+"t": 50.0
+}])
+group_ratio = 0.33

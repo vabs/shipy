@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="StaffDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/staff_def.gd" id="1_ca5g2"]
+
+[resource]
+script = ExtResource("1_ca5g2")
+id = &"warden"
+display_name = "Ghost Warden"
+handles = &"ghost"
+wage = 60
+work_time = 1.0
+speed = 3.4
+unlock_level = 13
+destination_lock = &"underworld"
+description = "Chases and banishes ghosts"

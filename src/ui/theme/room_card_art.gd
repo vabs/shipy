@@ -8,8 +8,8 @@ const U := preload("res://src/render/art/art_util.gd")
 
 const DEFAULT_WIDTH: Dictionary = {
 	&"cabin": 2, &"buffet": 4, &"toilets": 2, &"bar": 3, &"pool": 6, &"deck_chairs": 3, &"cinema": 4,
-	&"gym": 3, &"arcade": 3, &"restaurant": 4, &"medbay": 2, &"sauna": 2, &"ice_rink": 5, &"casino": 4,
-	&"stairs": 1, &"elevator": 1, &"generator": 1, &"water_tank": 1,
+	&"gym": 3, &"arcade": 3, &"kids_club": 3, &"restaurant": 4, &"medbay": 2, &"sauna": 2, &"ice_rink": 5, &"casino": 4,
+	&"crew_quarters": 2, &"stairs": 1, &"elevator": 1, &"generator": 1, &"water_tank": 1,
 }
 const OPEN_AIR: Array[StringName] = [&"pool", &"deck_chairs"]
 

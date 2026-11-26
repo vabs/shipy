@@ -7,7 +7,7 @@ script = ExtResource("1_p0e3l")
 id = &"underworld_1"
 campaign_index = 13
 display_name = "Gloom Cruise"
-blurb = "Spooky! Ghosts drift through the decks. Click them away."
+blurb = "Spooky! Ghosts drift through the decks. Click them away, or hire a warden."
 destination = &"underworld"
 hull = &"medium"
 budget = 5200
@@ -47,14 +47,22 @@ scheduled_events = Array[Dictionary]([{
 }])
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 21
+"value": 32
 }, {
 "type": "profit",
-"value": 1800
+"value": 2050
 }, {
-"type": "rating",
-"value": 52
+"type": "no_lost_guests"
 }])
-mess_mult = 1.14
-health_mult = 0.88
-decay_mult = 1.14
+mess_mult = 0.88
+health_mult = 1.1
+decay_mult = 1.11
+staff_fatigue = true
+vips = Array[Dictionary]([{
+"kind": &"inspector",
+"t": 40.0
+}, {
+"kind": &"critic",
+"t": 110.0
+}])
+group_ratio = 0.38

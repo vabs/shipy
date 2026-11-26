@@ -118,8 +118,14 @@ func setup(w: SimWorld, r: VoyageRenderer) -> void:
 	w.mess_spawned.connect(_on_mess)
 	w.room_broken.connect(_on_broken)
 	w.guest_got_sick.connect(_on_sick)
+	w.guest_got_seasick.connect(_on_seasick)
+	w.event_started.connect(_on_event)
+	w.port_stop_ready.connect(_on_port_ready)
 	w.ghost_spawned.connect(_on_ghost)
 	w.guest_stormed_off.connect(_on_storm)
+	w.staff_tired.connect(_on_staff_tired)
+	w.vip_boarded.connect(_on_vip_boarded)
+	w.vip_verdict.connect(_on_vip_verdict)
 	# problems that already exist (fast-forward / late bind)
 	for m in w.messes:
 		_on_mess(m.id)
@@ -183,11 +189,59 @@ func _on_sick(gid: int) -> void:
 	_alerts[0]["ids"] = [gid]
 
 
+## Storm: queasy guests are grouped into one row, like the sick ones ("3 guests are seasick"), until they are all fine again.
+func _on_seasick(gid: int) -> void:
+	for a in _alerts:
+		if a["kind"] == &"seasick" and not a["resolved"]:
+			a["ids"].append(gid)
+			a["ref_id"] = gid
+			_alerts.erase(a)
+			_alerts.push_front(a)
+			return
+	_add(&"seasick", &"seasick", "A guest is seasick", &"guest", gid, false)
+	_alerts[0]["ids"] = [gid]
+
+
+func _on_event(id: StringName) -> void:
+	if id == &"storm":
+		_add(&"weather", &"storm", "Storm! The top deck is closed", &"none", -1, true)
+
+
+func _on_port_ready() -> void:
+	_add(&"port", &"event", "Docked: refit the ship, then cast off", &"none", -1, true)
+
+
 func _on_ghost(id: int) -> void:
 	var gh: Ghost = world.ghost_by_id(id)
 	if gh == null:
 		return
 	_add(&"ghost", &"ghost", "Ghost on %s!" % _deck_name(gh.deck), &"ghost", id, false)
+
+
+func _on_staff_tired(id: int) -> void:
+	var s: StaffMember = world.staff_by_id(id)
+	if s == null:
+		return
+	var tip: String = "send to rest" if not world.room_sim.crew_rooms.is_empty() else "no crew quarters!"
+	_add(&"tired", &"zzz", "%s is tired: %s" % [s.def.display_name, tip], &"staff", id, true)
+
+
+func _on_vip_boarded(gid: int, kind: StringName) -> void:
+	var tip: String = "keep food quick"
+	if kind == VipSim.CELEBRITY:
+		tip = "no long queues"
+	elif kind == VipSim.INSPECTOR:
+		tip = "tidy up!"
+	_add(&"vip", kind, "%s aboard: %s" % [VipSim.kind_label(kind), tip], &"guest", gid, true)
+
+
+func _on_vip_verdict(gid: int, kind: StringName, grade: StringName) -> void:
+	var pay: int = VipSim.pay_for(grade)
+	var txt: String = "%s review: %s" % [VipSim.kind_label(kind), VipSim.grade_label(grade).to_lower()]
+	if pay != 0:
+		txt += " (%s$%d)" % ["+" if pay > 0 else "-", absi(pay)]
+	var icon: StringName = &"vip" if grade == VipSim.GREAT else (&"angry" if grade == VipSim.BAD else kind)
+	_add(&"vip_verdict", icon, txt, &"guest", gid, true)
 
 
 func _on_storm(gid: int) -> void:
@@ -212,12 +266,24 @@ func _is_open(a: Dictionary) -> bool:
 			return r != null and r.broken
 		&"ghost":
 			return world.ghost_by_id(a["ref_id"]) != null
+		&"seasick":
+			var ns: int = 0
+			var lasts: int = -1
+			for gid in a["ids"]:
+				var sg: Guest = world.guest_by_id(gid)
+				if sg != null and sg.seasick and sg.is_aboard():
+					ns += 1
+					lasts = gid
+			if ns > 0:
+				a["ref_id"] = lasts
+				a["text"] = "A guest is seasick" if ns == 1 else "%d guests are seasick" % ns
+			return ns > 0
 		&"sick":
 			var n: int = 0
 			var last: int = -1
 			for gid in a["ids"]:
 				var g: Guest = world.guest_by_id(gid)
-				if g != null and g.sick and g.state != Guest.GONE and g.state != Guest.STORM_OFF:
+				if g != null and g.sick and g.is_aboard():
 					n += 1
 					last = gid
 			if n > 0:

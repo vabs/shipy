@@ -7,7 +7,7 @@ script = ExtResource("1_x1bhy")
 id = &"arctic_1"
 campaign_index = 7
 display_name = "Cold Open"
-blurb = "Brr! The top deck is freezing. Keep guests inside, then watch the sky."
+blurb = "Brr! The top deck is freezing, the crew gets tired and a celebrity is aboard."
 destination = &"arctic"
 hull = &"medium"
 budget = 3700
@@ -47,13 +47,20 @@ scheduled_events = Array[Dictionary]([{
 }])
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 38
+"value": 40
+}, {
+"type": "served",
+"value": 150
 }, {
 "type": "rating",
-"value": 59
-}, {
-"type": "no_lost_guests"
+"value": 71
 }])
-mess_mult = 1.27
-health_mult = 0.79
-decay_mult = 1.2
+mess_mult = 1.09
+health_mult = 0.9
+decay_mult = 1.13
+staff_fatigue = true
+vips = Array[Dictionary]([{
+"kind": &"celebrity",
+"t": 40.0
+}])
+group_ratio = 0.33

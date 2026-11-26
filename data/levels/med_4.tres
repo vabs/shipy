@@ -8,7 +8,7 @@ id = &"med_4"
 index = 4
 campaign_index = 4
 display_name = "Spa Day at Sea"
-blurb = "Sticky guests, steamy saunas and a little too much shrimp."
+blurb = "Sticky guests, steamy saunas and your first VIP: a food critic. Hire an entertainer!"
 hull = &"medium"
 budget = 3600
 ticket_price = 24
@@ -47,13 +47,17 @@ scheduled_events = Array[Dictionary]([{
 }])
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 41
+"value": 49
 }, {
 "type": "rating",
-"value": 62
+"value": 64
 }, {
 "type": "no_lost_guests"
 }])
-mess_mult = 1.15
-health_mult = 0.87
-decay_mult = 1.08
+mess_mult = 0.99
+health_mult = 0.99
+decay_mult = 1.02
+vips = Array[Dictionary]([{
+"kind": &"critic",
+"t": 50.0
+}])

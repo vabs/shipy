@@ -14,6 +14,12 @@ var preset_staff: Dictionary = {}
 ## Crew hired by the player in port (wages already deducted from the budget).
 var hired: Dictionary = {&"janitor": 0, &"mechanic": 0}
 
+## Company perks (Perks dictionary). Setting it folds the Investors budget bonus into `budget` (once: assigning
+## again replaces the old bonus) and `create_world` hands the dictionary to SimWorld.apply_perks.
+var perks: Dictionary = {}:
+	set = set_perks
+var _budget_bonus: int = 0
+
 var budget: int:
 	get:
 		return grid.money
@@ -31,6 +37,25 @@ func _init(lvl: LevelDef, campaign_index: int = -1) -> void:
 	for p in lvl.preset_rooms:
 		grid.place_free(StringName(p.get("room", &"")), int(p.get("deck", 0)), int(p.get("x", 0)), bool(p.get("locked", false)))
 	preset_staff = lvl.preset_staff.duplicate()
+
+
+func set_perks(p: Dictionary) -> void:
+	perks = Perks.normalized(p)
+	var bonus: int = Perks.budget_bonus(perks, level.budget)
+	if bonus != _budget_bonus:
+		grid.money += bonus - _budget_bonus
+		_budget_bonus = bonus
+		changed.emit()
+
+
+## Extra budget currently granted by the Investors perk.
+func budget_bonus() -> int:
+	return _budget_bonus
+
+
+## True for RefitState (the Quick refit at a mid-voyage port stop, docs/SPEC.md §13.8): the UI hides sell / move / undo / manifest.
+func is_refit() -> bool:
+	return false
 
 
 # --- rooms -------------------------------------------------------------------------------------
@@ -105,11 +130,25 @@ func can_hire(role: StringName) -> Dictionary:
 	var def: StaffDef = ContentStore.staff_role(role)
 	if def == null:
 		return {"ok": false, "reason": "Unknown role"}
+	if def.destination_lock != &"" and def.destination_lock != level.destination:
+		return {"ok": false, "reason": "%s only" % _destination_name(def.destination_lock)}
+	if def.unlock_level > grid.campaign_index:
+		return {"ok": false, "reason": "Unlocks at level %d" % def.unlock_level}
 	if staff_total() >= hull.max_staff:
 		return {"ok": false, "reason": "Crew is full"}
 	if def.wage > budget:
 		return {"ok": false, "reason": "Not enough money"}
 	return {"ok": true, "reason": ""}
+
+
+func _destination_name(dest_id: StringName) -> String:
+	var d: DestinationDef = ContentStore.destination(dest_id)
+	return d.display_name if d != null else String(dest_id).capitalize()
+
+
+## Crew roles offered for this level (unlock level and destination respected), in display order.
+func available_roles() -> Array[StaffDef]:
+	return ContentStore.staff_available(grid.campaign_index, level.destination)
 
 
 func hire(role: StringName) -> bool:
@@ -134,9 +173,11 @@ func fire(role: StringName) -> bool:
 
 # --- info --------------------------------------------------------------------------------------
 ## Guest manifest: {guests, by_archetype {id: count}, waves [{t,count}], beds, cabins_built,
-## cabins_needed}.
+## cabins_needed (for `peak_guests`, the most people aboard at once), groups {groups, couples, families, kids, grouped}, kids, vips [{t, kind}]}. `by_archetype` covers everybody
+## except the kids (who only come inside families, see `groups`); `guests` counts everybody incl. VIPs.
 func manifest() -> Dictionary:
-	var total: int = level.total_guests()
+	var groups: Dictionary = GuestGroup.summary(level)
+	var total: int = level.total_guests() - int(groups["kids"])
 	var sum_w: float = 0.0
 	for k in level.archetype_weights:
 		sum_w += float(level.archetype_weights[k])
@@ -158,17 +199,30 @@ func manifest() -> Dictionary:
 			cabins += 1
 	var cabin_def: RoomDef = ContentStore.room(&"cabin")
 	return {
-		"guests": total,
+		"guests": level.total_guests(),
 		"by_archetype": by,
 		"waves": level.waves.duplicate(true),
 		"beds": beds,
 		"cabins_built": cabins,
-		"cabins_needed": int(ceil(float(total) / float(cabin_def.capacity))),
+		"peak_guests": level.peak_guests(),
+		"cabins_needed": int(ceil(float(level.peak_guests()) / float(cabin_def.capacity))),
+		"groups": groups,
+		"kids": int(groups["kids"]),
+		"vips": _vip_schedule(),
 	}
 
 
+## The level's VIPs in boarding order: [{t, kind}].
+func _vip_schedule() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for v in level.vips:
+		out.append({"t": float(v.get("t", 0.0)), "kind": StringName(v.get("kind", &""))})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["t"]) < float(b["t"]))
+	return out
+
+
 func validate() -> Dictionary:
-	return grid.validate_for_voyage(level.total_guests(), staff_total())
+	return grid.validate_for_voyage(level.peak_guests(), staff_total())
 
 
 func utilities() -> Dictionary:
@@ -177,4 +231,7 @@ func utilities() -> Dictionary:
 
 ## Creates the voyage simulation from the current port state.
 func create_world(seed_value: int = 1) -> SimWorld:
-	return SimWorld.new(level, layout.duplicate(), staff_counts(), seed_value, budget)
+	var w := SimWorld.new(level, layout.duplicate(), staff_counts(), seed_value, budget)
+	if not perks.is_empty():
+		w.apply_perks(perks)
+	return w

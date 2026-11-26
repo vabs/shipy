@@ -43,14 +43,14 @@ scheduled_events = Array[Dictionary]([{
 "event": &"haunting",
 "t": 90.0
 }, {
-"event": &"lunch_rush",
-"t": 140.0
+"event": &"storm",
+"t": 145.0
 }, {
 "event": &"food_poisoning",
-"t": 190.0
+"t": 205.0
 }, {
 "event": &"haunting",
-"t": 235.0
+"t": 240.0
 }])
 random_event_interval = 85.0
 star_goals = Array[Dictionary]([{
@@ -58,11 +58,20 @@ star_goals = Array[Dictionary]([{
 "value": 39
 }, {
 "type": "served",
-"value": 300
+"value": 340
 }, {
 "type": "rating",
-"value": 62
+"value": 74
 }])
-mess_mult = 1.4
-health_mult = 0.71
-decay_mult = 1.05
+mess_mult = 1.08
+health_mult = 0.89
+decay_mult = 1.03
+staff_fatigue = true
+vips = Array[Dictionary]([{
+"kind": &"inspector",
+"t": 45.0
+}, {
+"kind": &"celebrity",
+"t": 125.0
+}])
+group_ratio = 0.35

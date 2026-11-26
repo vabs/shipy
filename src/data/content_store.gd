@@ -161,7 +161,30 @@ static func all_staff_roles() -> Array[StaffDef]:
 	var out: Array[StaffDef] = []
 	for s in _staff.values():
 		out.append(s as StaffDef)
-	out.sort_custom(func(a: StaffDef, b: StaffDef) -> bool: return a.wage < b.wage)
+	out.sort_custom(func(a: StaffDef, b: StaffDef) -> bool:
+		if a.unlock_level != b.unlock_level:
+			return a.unlock_level < b.unlock_level
+		if a.wage != b.wage:
+			return a.wage < b.wage
+		return String(a.id) < String(b.id))
+	return out
+
+
+## Crew roles the player may hire while playing the level with this campaign index in this destination.
+static func staff_available(campaign_index: int, destination_id: StringName) -> Array[StaffDef]:
+	var out: Array[StaffDef] = []
+	for s in all_staff_roles():
+		if s.is_available(campaign_index, destination_id):
+			out.append(s)
+	return out
+
+
+## Roles whose unlock_level is exactly `campaign_index` (what reaching that level newly offers).
+static func staff_unlocked_at(campaign_index: int) -> Array[StaffDef]:
+	var out: Array[StaffDef] = []
+	for s in all_staff_roles():
+		if s.unlock_level == campaign_index:
+			out.append(s)
 	return out
 
 

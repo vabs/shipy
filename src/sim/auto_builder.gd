@@ -12,6 +12,8 @@ extends RefCounted
 ##   crew: bool          hire crew (default true)
 ##   budget: int         override the port budget before building (e.g. 99999 to measure a plan's cost)
 ##   upgrades: bool      spend leftovers on tier upgrades (default true)
+##   new_roles: bool     hire the specialist crew (warden, chef, medic, entertainer) when sensible (default true)
+## Levels with staff fatigue also get one crew quarters (unlocked from level 7).
 
 const FUN_BASE: Array[StringName] = [&"bar", &"cinema", &"gym", &"arcade", &"casino", &"ice_rink", &"pool"]
 ## One food / toilet / fun room per this many guests (a planned, not luxurious, ship).
@@ -22,6 +24,13 @@ const GUESTS_PER_FUN: float = 32.0
 const GUESTS_PER_JANITOR: float = 36.0
 const MECHANIC_FROM: int = 14
 const SECOND_MECHANIC_FROM: int = 48
+## Specialist crew is hired from this many guests on (one each, after the janitors / mechanics, if the crew has
+## room and the money is left over). The warden is hired whenever the destination has ghosts.
+const CHEF_FROM: int = 30
+const MEDIC_FROM: int = 30
+const ENTERTAINER_FROM: int = 36
+## Money that must stay unspent after a specialist hire (keeps upgrades / mid-voyage hires possible).
+const SPECIALIST_MONEY_MARGIN: int = 150
 
 
 ## Creates a PortState for the level and fills it.
@@ -85,7 +94,12 @@ static func apply(port: PortState, opts: Dictionary = {}) -> void:
 		if pr.def.id == &"cabin":
 			beds_have += pr.capacity()
 	var cabin_def: RoomDef = ContentStore.room(&"cabin")
-	var cabins_needed: int = maxi(int(ceil(float(n_guests - beds_have) / float(cabin_def.capacity))), 0)
+	# Excursion guests give their beds back at a port stop, so cabins are sized for the most people aboard at once.
+	var cabins_needed: int = maxi(int(ceil(float(level.peak_guests() - beds_have) / float(cabin_def.capacity))), 0)
+	# Couples and families want one cabin together: a spare cabin per three groups keeps them from splitting up.
+	var group_info: Dictionary = GuestGroup.summary(level)
+	if int(group_info["groups"]) > 0:
+		cabins_needed += int(ceil(float(group_info["groups"]) / 3.0))
 
 	# Stairs: one per adjacent deck pair that is not already linked.
 	var stair_cost: int = _stairs_needed(grid, hull) * int(ContentStore.room(&"stairs").cost)
@@ -119,6 +133,10 @@ static func apply(port: PortState, opts: Dictionary = {}) -> void:
 		want_toilets = 1
 		want_fun = 2
 	var extras: Array[StringName] = []
+	# Kids on the manifest: a kids' club (one per ~8 kids) before the grown-ups' extras.
+	if avail.has(&"kids_club") and int(group_info["kids"]) > 0 and not poor:
+		for i in int(ceil(float(group_info["kids"]) / 8.0)):
+			extras.append(&"kids_club")
 	if fun_i < fun_picks.size():
 		extras.append(fun_picks[fun_i])
 		fun_i += 1
@@ -128,6 +146,8 @@ static func apply(port: PortState, opts: Dictionary = {}) -> void:
 		extras.append(&"buffet")
 	if avail.has(&"medbay") and n_guests >= 14 and not poor:
 		extras.append(&"medbay")
+	if avail.has(&"crew_quarters") and level.staff_fatigue and hire_crew and not poor:
+		extras.append(&"crew_quarters")
 	if avail.has(&"restaurant") and n_guests >= 30 and want_buffets >= 2 and not poor:
 		extras.append(&"restaurant")
 		want_buffets -= 1
@@ -162,7 +182,7 @@ static func apply(port: PortState, opts: Dictionary = {}) -> void:
 	for d in range(0, top):
 		interior_decks.append(d)
 	var order: Array[StringName] = []
-	for id in [&"cabin", &"toilets", &"buffet", &"restaurant", &"medbay"]:
+	for id in [&"cabin", &"toilets", &"buffet", &"restaurant", &"medbay", &"crew_quarters"]:
 		for i in int(tally.get(id, 0)):
 			order.append(id)
 	for id in plan:
@@ -205,7 +225,8 @@ static func apply(port: PortState, opts: Dictionary = {}) -> void:
 			port.hire(&"janitor")
 		for i in mechanics:
 			port.hire(&"mechanic")
-		# Spare money buys a second janitor on big ships.
+		if bool(opts.get("new_roles", true)) and not poor:
+			_hire_specialists(port, dest, n_guests, floor_money)
 	# --- upgrades with leftovers ----------------------------------------------------------
 	if not poor and bool(opts.get("upgrades", true)):
 		var spare: int = port.budget - floor_money
@@ -219,6 +240,24 @@ static func apply(port: PortState, opts: Dictionary = {}) -> void:
 	# --- final safety: connectivity -------------------------------------------------------
 	_ensure_connected(grid, hull, sx)
 	port.changed.emit()
+
+
+## Hires the specialist crew the level can use, one of each, while the crew has room and the money lasts.
+static func _hire_specialists(port: PortState, dest: DestinationDef, n_guests: int, floor_money: int) -> void:
+	var wants: Array[StringName] = []
+	if dest != null and dest.ghost_interval.y > 0.0:
+		wants.append(&"warden")
+	if n_guests >= CHEF_FROM and (port.layout.count_of(&"buffet") + port.layout.count_of(&"restaurant")) > 0:
+		wants.append(&"chef")
+	if n_guests >= MEDIC_FROM:
+		wants.append(&"medic")
+	if n_guests >= ENTERTAINER_FROM:
+		wants.append(&"entertainer")
+	for role in wants:
+		var def: StaffDef = ContentStore.staff_role(role)
+		if def == null or port.budget - floor_money < def.wage + SPECIALIST_MONEY_MARGIN:
+			continue
+		port.hire(role)
 
 
 ## Adds `id` to the plan if it (plus any generators/tanks it forces) fits the budget.

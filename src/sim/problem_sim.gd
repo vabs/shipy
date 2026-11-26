@@ -41,7 +41,7 @@ func try_mess(w: SimWorld, r: RoomRuntime) -> void:
 	var chance: float = r.def.mess_chance
 	if chance <= 0.0:
 		return
-	chance *= w.events.mess_mult(r) * w.level.mess_mult
+	chance *= w.events.mess_mult(r) * w.level.mess_mult * r.mess_mult
 	if w.rng.randf() < chance:
 		spawn_mess(w, r)
 
@@ -123,7 +123,7 @@ func _remove_mess(w: SimWorld, m: Mess) -> void:
 # Sickness
 # ---------------------------------------------------------------------------------------------
 func infect(w: SimWorld, g: Guest) -> void:
-	if g.sick or g.mode == Guest.GONE or g.mode == Guest.STORM_OFF:
+	if g.sick or not g.is_aboard():
 		return
 	g.sick = true
 	var has_medbay: bool = false
@@ -136,6 +136,7 @@ func infect(w: SimWorld, g: Guest) -> void:
 	g.bubble_timer = 3.0
 	g.eval_timer = 0.2
 	w.metrics["sick"] += 1
+	w.staff_sim.jobs.post(&"sick", g.deck, g.x, g.id)
 	w.guest_got_sick.emit(g.id)
 
 
@@ -143,6 +144,15 @@ func sick_count(w: SimWorld) -> int:
 	var n: int = 0
 	for g in w.guests:
 		if g.sick and g.mode != Guest.GONE:
+			n += 1
+	return n
+
+
+## Guests who are seasick right now (a storm; not part of `sick_count`, they are not a "problem" in the HUD tally).
+func seasick_count(w: SimWorld) -> int:
+	var n: int = 0
+	for g in w.guests:
+		if g.seasick and g.is_aboard():
 			n += 1
 	return n
 
@@ -164,6 +174,7 @@ func spawn_ghost(w: SimWorld) -> Ghost:
 	gh.bob_phase = w.rng.randf() * TAU
 	w.ghosts.append(gh)
 	w.metrics["ghosts"] += 1
+	w.staff_sim.jobs.post(&"ghost", gh.deck, clampf(gh.x, 0.3, float(hull.width) - 0.3), gh.id)
 	w.ghost_spawned.emit(gh.id)
 	return gh
 
@@ -174,6 +185,7 @@ func banish_ghost(w: SimWorld, gh: Ghost) -> void:
 	gh.banished = true
 	w.ghosts.erase(gh)
 	w.metrics["banished"] += 1
+	w.staff_sim.on_target_resolved(w, &"ghost", gh.id)
 	w.ghost_banished.emit(gh.id)
 
 
@@ -208,7 +220,7 @@ func tick(w: SimWorld, dt: float) -> void:
 		_ghost_hit_timer = 0.0
 		for gh in w.ghosts:
 			for g in w.guests:
-				if g.deck != gh.deck or g.mode == Guest.GONE or g.mode == Guest.BOARDING or g.mode == Guest.STORM_OFF:
+				if g.deck != gh.deck or not g.is_aboard() or g.mode == Guest.BOARDING:
 					continue
 				if gh.hit.has(g.id):
 					continue
@@ -223,7 +235,7 @@ func tick(w: SimWorld, dt: float) -> void:
 func _spread_sickness(w: SimWorld) -> void:
 	var sick: Array[Guest] = []
 	for g in w.guests:
-		if g.sick and g.mode != Guest.GONE and g.mode != Guest.STORM_OFF:
+		if g.sick and g.is_aboard():
 			sick.append(g)
 	if sick.is_empty():
 		return
@@ -231,7 +243,7 @@ func _spread_sickness(w: SimWorld) -> void:
 		# Each second a sick guest infects one random healthy guest within the radius with p = 0.04.
 		var near: Array[Guest] = []
 		for g in w.guests:
-			if g.sick or g.deck != s.deck or g.mode == Guest.GONE or g.mode == Guest.STORM_OFF or g.mode == Guest.BOARDING:
+			if g.sick or g.deck != s.deck or not g.is_aboard() or g.mode == Guest.BOARDING:
 				continue
 			if absf(g.x - s.x) <= SimConst.SICK_INFECT_RADIUS:
 				near.append(g)

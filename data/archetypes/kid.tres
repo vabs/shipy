@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ArchetypeDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/archetype_def.gd" id="1_v7ruf"]
+
+[resource]
+script = ExtResource("1_v7ruf")
+id = &"kid"
+display_name = "Kid"
+prop = &"propeller"
+body_color = Color(0.56078434, 0.84705883, 0.9411765, 1)
+favorite_rooms = Array[StringName]([&"kids_club", &"pool", &"arcade"])
+decay_mult = {
+&"fun": 1.6,
+&"hunger": 1.2
+}
+quirk_text = "Bounces off the walls: bored 60% faster, hungry 20% faster. Travels with family."
+kid = true
+body_scale = 0.75

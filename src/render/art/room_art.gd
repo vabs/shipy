@@ -28,12 +28,13 @@ const CEIL_H: float = 5.0
 
 const _WIDTHS: Dictionary = {
 	&"cabin": 2, &"buffet": 4, &"toilets": 2, &"bar": 3, &"pool": 6, &"deck_chairs": 3, &"cinema": 4,
-	&"gym": 3, &"arcade": 3, &"restaurant": 4, &"medbay": 2, &"sauna": 2, &"ice_rink": 5, &"casino": 4,
-	&"stairs": 1, &"elevator": 1, &"generator": 1, &"water_tank": 1,
+	&"gym": 3, &"arcade": 3, &"kids_club": 3, &"restaurant": 4, &"medbay": 2, &"sauna": 2, &"ice_rink": 5, &"casino": 4,
+	&"crew_quarters": 2, &"stairs": 1, &"elevator": 1, &"generator": 1, &"water_tank": 1,
 }
 const _CAPS: Dictionary = {
 	&"cabin": 4, &"buffet": 6, &"toilets": 3, &"bar": 5, &"pool": 8, &"deck_chairs": 4, &"cinema": 8,
-	&"gym": 4, &"arcade": 4, &"restaurant": 4, &"medbay": 2, &"sauna": 3, &"ice_rink": 6, &"casino": 6,
+	&"gym": 4, &"arcade": 4, &"kids_club": 6, &"restaurant": 4, &"medbay": 2, &"sauna": 3, &"ice_rink": 6, &"casino": 6,
+	&"crew_quarters": 2,
 }
 
 
@@ -53,6 +54,8 @@ static func capacity_for(room_id: StringName, tier: int) -> int:
 		return base + 2 * (tier - 1)
 	if room_id == &"medbay":
 		return base
+	if room_id == &"crew_quarters":
+		return base + (tier - 1)   # one extra bunk per tier
 	return base + (tier - 1) * int(ceil(float(base) * 0.5))
 
 
@@ -117,7 +120,7 @@ static func _draw_front_inner(ci: CanvasItem, room_id: StringName, rect: Rect2, 
 # =================================================================================================
 static func slot_pose(room_id: StringName) -> StringName:
 	match room_id:
-		&"cabin": return &"sleep"
+		&"cabin", &"crew_quarters": return &"sleep"
 		&"bar", &"cinema", &"restaurant", &"sauna": return &"sit"
 		&"pool": return &"swim"
 		&"deck_chairs", &"medbay": return &"lie"
@@ -133,6 +136,7 @@ static func slot_facing(room_id: StringName, rect: Rect2, slot: int, capacity: i
 	match room_id:
 		&"cinema": return -1
 		&"gym", &"cabin", &"medbay", &"deck_chairs": return 1
+		&"crew_quarters": return 1 if slot < 2 else -1
 		&"restaurant":
 			var k := slot % 4
 			return 1 if k % 2 == 0 else -1

@@ -8,29 +8,65 @@ const OUT: String = "res://data"
 
 var _count: int = 0
 
+# Opt-ins per level id (SPEC §13.9). VIPS: id -> [[t, kind], ...] (a critic needs ~80 s for two meals, the inspector ~110 s for a full walk,
+# so every VIP boards at least 110 / 130 s before the end), GROUP_RATIO: id -> share of every wave that travels as couples / families
+# (about 0.33-0.38: a wave needs >= 3 grouped guests to produce a family with a kid, every level from med_6 on has at least one),
+# PORT_STOPS: id -> {t, name, disembark, board}. Storms are scheduled inline in the event lists of _gen_levels(); from campaign level 8 they
+# are also part of the random pool (EventDef.min_campaign_index). Staff fatigue is on from campaign level 7 (see _level).
+const VIPS: Dictionary = {
+	"med_4": [[50, "critic"]],
+	"med_5": [[40, "inspector"]],
+	"med_6": [[50, "critic"]],
+	"arctic_1": [[40, "celebrity"]],
+	"arctic_2": [[40, "inspector"], [105, "critic"]],
+	"arctic_3": [[45, "critic"]],
+	"arctic_4": [[40, "celebrity"], [115, "critic"]],
+	"arctic_5": [[40, "critic"], [95, "inspector"]],
+	"arctic_6": [[40, "celebrity"], [110, "critic"]],
+	"underworld_1": [[40, "inspector"], [110, "critic"]],
+	"underworld_2": [[45, "celebrity"], [105, "inspector"]],
+	"underworld_3": [[45, "critic"], [100, "inspector"]],
+	"underworld_4": [[40, "celebrity"], [105, "critic"]],
+	"underworld_5": [[45, "inspector"], [125, "celebrity"]],
+	"underworld_6": [[45, "critic"], [115, "celebrity"]],
+}
+const GROUP_RATIO: Dictionary = {
+	"med_6": 0.33,
+	"arctic_1": 0.33, "arctic_2": 0.33, "arctic_3": 0.33, "arctic_4": 0.38, "arctic_5": 0.33, "arctic_6": 0.33,
+	"underworld_1": 0.38, "underworld_2": 0.35, "underworld_3": 0.35, "underworld_4": 0.35, "underworld_5": 0.35, "underworld_6": 0.35,
+}
+const PORT_STOPS: Dictionary = {
+	"med_5": {"t": 125.0, "name": "Santorini", "disembark": 0.3, "board": 6},
+	"arctic_4": {"t": 130.0, "name": "Penguin Point", "disembark": 0.3, "board": 8},
+	"arctic_6": {"t": 125.0, "name": "Aurora Bay", "disembark": 0.25, "board": 10},
+	"underworld_4": {"t": 130.0, "name": "Styx Landing", "disembark": 0.3, "board": 10},
+	"underworld_6": {"t": 160.0, "name": "Charon's Wharf", "disembark": 0.25, "board": 12},
+}
+
 # Star goals per level (index = campaign level - 1): [[type, value] x 3], produced by
-# tests/balance.gd + tests/goals.py from the passive / human / active AutoPlayer runs:
+# tests/balance.gd + tests/goals.py from the passive / human / active AutoPlayer runs (phase 4b: recalibrated for levels 4-18 on 16 seeds
+# with every v2 feature switched on; med_1-3 keep their v1 goals because they play exactly as before):
 #   goal 1 is a rating goal just under the passive mean (passive earns ~1 star),
 #   goal 2 sits around human play, goal 3 needs active-level play (rating, profit, served or no-lost).
 const GOALS: Array = [
 	[["rating", 45], ["served", 45], ["no_lost_guests", 0]],
 	[["rating", 56], ["rating", 78], ["served", 70]],
 	[["rating", 42], ["rating", 73], ["no_lost_guests", 0]],
-	[["rating", 41], ["rating", 62], ["no_lost_guests", 0]],
-	[["rating", 40], ["served", 130], ["rating", 77]],
-	[["rating", 29], ["rating", 62], ["served", 160]],
-	[["rating", 38], ["rating", 59], ["no_lost_guests", 0]],
-	[["rating", 40], ["served", 170], ["rating", 82]],
-	[["rating", 31], ["rating", 47], ["served", 210]],
-	[["rating", 29], ["profit", 1650], ["rating", 65]],
-	[["rating", 46], ["served", 240], ["rating", 74]],
-	[["rating", 30], ["rating", 53], ["served", 240]],
-	[["rating", 21], ["profit", 1800], ["rating", 52]],
-	[["rating", 32], ["served", 220], ["rating", 74]],
-	[["rating", 27], ["rating", 52], ["served", 260]],
-	[["rating", 33], ["profit", 3250], ["rating", 66]],
-	[["rating", 39], ["served", 300], ["rating", 62]],
-	[["rating", 33], ["rating", 45], ["served", 360]],
+	[["rating", 49], ["rating", 64], ["no_lost_guests", 0]],
+	[["rating", 62], ["served", 110], ["rating", 86]],
+	[["rating", 34], ["rating", 61], ["served", 180]],
+	[["rating", 40], ["served", 150], ["rating", 71]],
+	[["rating", 44], ["profit", 1400], ["rating", 81]],
+	[["rating", 41], ["rating", 57], ["served", 240]],
+	[["rating", 58], ["served", 210], ["rating", 82]],
+	[["rating", 55], ["served", 250], ["rating", 82]],
+	[["rating", 45], ["rating", 64], ["served", 220]],
+	[["rating", 32], ["profit", 2050], ["no_lost_guests", 0]],
+	[["rating", 43], ["served", 260], ["rating", 78]],
+	[["rating", 34], ["rating", 67], ["served", 300]],
+	[["rating", 52], ["served", 240], ["no_lost_guests", 0]],
+	[["rating", 39], ["served", 340], ["rating", 74]],
+	[["rating", 39], ["rating", 56], ["served", 350]],
 ]
 
 
@@ -105,6 +141,12 @@ func _room(id: String, name: String, cat: String, w: int, cap: int, svc: float, 
 		var add: int = ceili(cap * 0.5)
 		bonus.append({"cost": int(round(cost * 0.6)), "capacity_add": add, "speed_mult": 1.0})
 		bonus.append({"cost": int(round(cost * 0.9)), "capacity_add": add, "speed_mult": 1.25})
+	if id == "crew_quarters":
+		# Bunks, not guest capacity: each tier adds one bunk and rests the crew 25% faster (SPEC §13.4).
+		bonus.append({"cost": int(round(cost * 0.6)), "capacity_add": 1, "speed_mult": 1.25})
+		bonus.append({"cost": int(round(cost * 0.9)), "capacity_add": 1, "speed_mult": 1.25})
+	if id == "kids_club":
+		r.adult_mult = 0.2   # grown-ups score the ball pit at a fifth (SPEC §13.6)
 	r.tier_bonus = bonus
 	_save(r, "rooms", id)
 
@@ -137,6 +179,12 @@ func _gen_rooms() -> void:
 	_room("medbay", "Medbay", "service", 2, 2, 6.0, {}, "", 5, 300, 6.0, 2, 1,
 		"interior", 0.0, 0.0, 0.0, 3, "", 1.0, "Cures seasickness and dodgy shrimp.",
 		Color("#F7F4EC"), Color("#E8505B"), false)
+	_room("crew_quarters", "Crew Quarters", "service", 2, 2, 6.0, {}, "", 0, 220, 2.0, 1, 1,
+		"interior", 0.0, 0.0, 0.0, 7, "", 1.0, "Bunks where tired crew recharge. Guests keep out.",
+		Color("#EAE3F2"), Color("#6C8CD5"), false)
+	_room("kids_club", "Kids' Club", "fun", 3, 6, 9.0, {&"fun": 90.0}, "kids", 4, 320, 5.0, 2, 1,
+		"interior", 0.20, 100.0, 5.0, 6, "", 1.0, "Ball pit, slide and crayons. Built for kids.",
+		Color("#FFE3EF"), Color("#FF8FB1"))
 	_room("arcade", "Arcade", "fun", 3, 4, 8.0, {&"fun": 85.0}, "gaming", 8, 350, 6.0, 4, 0,
 		"interior", 0.08, 85.0, 6.0, 4, "", 1.0, "Beeps, boops and high scores.",
 		Color("#2B3A55"), Color("#7ED6A5"))
@@ -213,24 +261,43 @@ func _gen_archetypes() -> void:
 	a.quirk_text = "Gets bored twice as fast unless playing games."
 	_save(a, "archetypes", "gamer")
 
+	# Kids board only inside families (SPEC §13.6): never listed in a level's archetype weights.
+	a = ArchetypeDef.new()
+	a.id = &"kid"
+	a.display_name = "Kid"
+	a.prop = &"propeller"
+	a.body_color = Color("#8FD8F0")
+	a.favorite_rooms = [&"kids_club", &"pool", &"arcade"]
+	a.decay_mult = {&"fun": 1.6, &"hunger": 1.2}
+	a.kid = true
+	a.body_scale = 0.75
+	a.quirk_text = "Bounces off the walls: bored 60% faster, hungry 20% faster. Travels with family."
+	_save(a, "archetypes", "kid")
 
-func _gen_staff() -> void:
+
+func _staff(id: String, name: String, handles: String, wage: int, work: float, speed: float, unlock: int,
+		dlock: String, desc: String) -> void:
 	var s := StaffDef.new()
-	s.id = &"janitor"
-	s.display_name = "Janitor"
-	s.handles = &"mess"
-	s.wage = 40
-	s.work_time = 3.5
-	s.speed = 2.6
-	_save(s, "staff", "janitor")
-	s = StaffDef.new()
-	s.id = &"mechanic"
-	s.display_name = "Mechanic"
-	s.handles = &"breakdown"
-	s.wage = 60
-	s.work_time = 7.0
-	s.speed = 2.6
-	_save(s, "staff", "mechanic")
+	s.id = StringName(id)
+	s.display_name = name
+	s.handles = StringName(handles)
+	s.wage = wage
+	s.work_time = work
+	s.speed = speed
+	s.unlock_level = unlock
+	s.destination_lock = StringName(dlock)
+	s.description = desc
+	_save(s, "staff", id)
+
+
+## Crew roles (docs/SPEC.md §13.3). work = seconds per job (medic: one treatment, warden: one banishing channel).
+func _gen_staff() -> void:
+	_staff("janitor", "Janitor", "mess", 40, 3.5, 2.6, 1, "", "Cleans up messes")
+	_staff("mechanic", "Mechanic", "breakdown", 60, 7.0, 2.6, 1, "", "Repairs broken rooms")
+	_staff("medic", "Medic", "sick", 70, 3.0, 3.0, 3, "", "Treats sick guests on the spot")
+	_staff("entertainer", "Entertainer", "aura", 55, 1.0, 2.8, 4, "", "Juggles for guests in long queues")
+	_staff("chef", "Chef", "aura", 65, 1.0, 2.8, 5, "", "Speeds up a food room and keeps it tidy")
+	_staff("warden", "Ghost Warden", "ghost", 60, 1.0, 3.4, 13, "underworld", "Chases and banishes ghosts")
 
 
 func _gen_hulls() -> void:
@@ -309,6 +376,20 @@ func _gen_events() -> void:
 	e.hygiene_decay_mult = 1.8
 	e.room_appeal_mult = {&"pool": 2.0}
 	_save(e, "events", "heat_wave")
+
+	# Storm (SPEC §13.7): generic, 45 s. The top deck is closed, guests may get seasick (x0.3 inside a cabin), spills are 1.5x as
+	# likely. Scheduled by STORMS below and, from campaign level 8, part of the random pool.
+	e = _event("storm", "Storm", "Rough seas! The top deck is closed and tummies are turning.", 45.0, "storm")
+	e.storm = true
+	e.weather_ease = 4.0
+	e.top_deck_closed = true
+	e.seasick_chance = 0.06
+	e.seasick_cabin_mult = 0.3
+	e.seasick_interval = 5.0
+	e.seasick_duration = 25.0
+	e.mess_mult_all = 1.5
+	e.min_campaign_index = 8
+	_save(e, "events", "storm")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -423,16 +504,27 @@ func _level(id: String, idx: int, cidx: int, name: String, blurb: String, dest: 
 	l.decay_mult = float(k.get("decay", 1.0))
 	l.patience_mult = float(k.get("patience", 1.0))
 	l.ghost_interval_mult = float(k.get("ghost", 1.0))
+	l.staff_fatigue = cidx >= 7
+	var vip_list: Array[Dictionary] = []
+	for v in VIPS.get(id, []):
+		vip_list.append({"t": float(v[0]), "kind": StringName(v[1])})
+	l.vips = vip_list
+	l.group_ratio = float(GROUP_RATIO.get(id, 0.0))
+	var stop: Dictionary = PORT_STOPS.get(id, {})
+	if not stop.is_empty():
+		l.port_stop = stop.duplicate()
 	_save(l, "levels", id)
 
 
 ## Per-level difficulty knobs [mess, health, decay] produced by tests/tune.gd so that the active
 ## AutoPlayer lands on the campaign curve (94 -> 78 rating) with a passive gap growing from ~9 to ~22.
-## Every level gets its own personality (messy, hungry, fragile...).
+## Every level gets its own personality (messy, hungry, fragile...). Phase 4b: levels 4-18 (which now also carry VIPs, groups, storms,
+## fatigue and port stops) are eased by x0.86 mess, x1.14 health and x0.94 decay to bring the passive gap back under 40; med_6, arctic_3,
+## underworld_1-3 and underworld_5, whose gap stayed above 40, got a second x0.9 / x1.1 / x1.04 (underworld_2-3 a further ~x0.8 / x1.25).
 const KNOBS: Array = [
-	[1.0, 2.2, 1.0], [1.00, 1.00, 1.00], [1.05, 0.96, 1.18], [1.15, 0.87, 1.08], [1.19, 0.84, 1.12], [1.24, 0.81, 0.96],
-	[1.27, 0.79, 1.20], [1.19, 0.84, 1.20], [1.18, 0.85, 1.20], [1.21, 0.83, 1.12], [1.25, 0.80, 1.10], [1.41, 0.71, 0.80],
-	[1.14, 0.88, 1.14], [1.25, 0.80, 1.20], [1.30, 0.77, 1.20], [1.35, 0.74, 1.05], [1.40, 0.71, 1.05], [1.50, 0.66, 1.08],
+	[1.00, 2.20, 1.00], [1.00, 1.00, 1.00], [1.05, 0.96, 1.18], [0.99, 0.99, 1.02], [1.02, 0.96, 1.05], [0.96, 1.01, 0.94],
+	[1.09, 0.90, 1.13], [1.02, 0.96, 1.13], [0.91, 1.07, 1.18], [1.04, 0.95, 1.05], [1.07, 0.91, 1.03], [1.21, 0.81, 0.75],
+	[0.88, 1.10, 1.11], [0.77, 1.25, 1.23], [0.81, 1.21, 1.23], [1.16, 0.84, 0.99], [1.08, 0.89, 1.03], [1.29, 0.75, 1.02],
 ]
 
 
@@ -465,71 +557,71 @@ func _gen_levels() -> void:
 		"med", "small", 2500, 20, 180.0, _waves(14, 180.0, T4, F4), W_MED,
 		_evs([[70, "film_night"], [115, "lunch_rush"]]), 0.0,
 		_goal_list(1))
-	_level("med_3", 3, 3, "Lido Rush Hour", "Power and water get tight. Build a generator and a tank.",
+	_level("med_3", 3, 3, "Lido Rush Hour", "Power and water get tight. Build a generator and a tank, and hire a medic.",
 		"med", "small", 3200, 22, 200.0, _waves(18, 200.0, T5, F5), W_MED,
 		_evs([[70, "lunch_rush"], [110, "pool_party"], [150, "power_surge"]]), 0.0,
 		_goal_list(2))
-	_level("med_4", 4, 4, "Spa Day at Sea", "Sticky guests, steamy saunas and a little too much shrimp.",
+	_level("med_4", 4, 4, "Spa Day at Sea", "Sticky guests, steamy saunas and your first VIP: a food critic. Hire an entertainer!",
 		"med", "medium", 3600, 24, 210.0, _waves(22, 210.0, T5, F5), W_MED,
 		_evs([[60, "heat_wave"], [120, "food_poisoning"], [160, "lunch_rush"]]), 0.0,
 		_goal_list(3))
-	_level("med_5", 5, 5, "Captain's Table", "Fine dining for fussy folk. The captain wants a full house.",
-		"med", "medium", 4400, 26, 220.0, _waves(25, 220.0, T5, F5), W_MED,
-		_evs([[55, "lunch_rush"], [95, "captains_dinner"], [150, "power_surge"]]), 0.0,
+	_level("med_5", 5, 5, "Captain's Table", "Fine dining, a chef and an inspector on deck. Dock at Santorini for a quick refit.",
+		"med", "medium", 4400, 26, 220.0, _waves(22, 220.0, T5, F5), W_MED,
+		_evs([[45, "lunch_rush"], [65, "captains_dinner"], [160, "power_surge"]]), 0.0,
 		_goal_list(4))
-	_level("med_6", 6, 6, "Mediterranean Meltdown", "Everything happens at once. Hold on to your hat.",
+	_level("med_6", 6, 6, "Mediterranean Meltdown", "Everything happens at once, and families with kids come aboard. Hold on to your hat.",
 		"med", "medium", 4700, 28, 240.0, _waves(28, 240.0, T5, F5), W_MED,
 		_evs([[55, "heat_wave"], [100, "lunch_rush"], [140, "power_surge"], [175, "food_poisoning"]]), 75.0,
 		_goal_list(5))
 
 	# ---- Arctic ---------------------------------------------------------------------------
-	_level("arctic_1", 1, 7, "Cold Open", "Brr! The top deck is freezing. Keep guests inside, then watch the sky.",
+	_level("arctic_1", 1, 7, "Cold Open", "Brr! The top deck is freezing, the crew gets tired and a celebrity is aboard.",
 		"arctic", "medium", 3700, 26, 220.0, _waves(24, 220.0, T5, F5), W_ARC,
 		_evs([[85, "northern_lights"], [135, "lunch_rush"], [175, "power_surge"]]), 0.0,
 		_goal_list(6))
-	_level("arctic_2", 2, 8, "Frostbitten Fun", "Skating, popcorn and a surprising number of broken machines.",
+	_level("arctic_2", 2, 8, "Frostbitten Fun", "Skating, popcorn, a storm on the horizon and a surprising number of broken machines.",
 		"arctic", "medium", 4300, 27, 230.0, _waves(27, 230.0, T5, F5), W_ARC,
-		_evs([[60, "film_night"], [120, "northern_lights"], [170, "power_surge"]]), 0.0,
+		_evs([[55, "film_night"], [100, "storm"], [160, "northern_lights"], [205, "power_surge"]]), 0.0,
 		_goal_list(7))
 	_level("arctic_3", 3, 9, "Whiteout Buffet", "Snowed in with hungry guests. The buffet is in demand.",
 		"arctic", "medium", 4600, 28, 240.0, _waves(31, 240.0, T5, F5), W_ARC,
-		_evs([[55, "lunch_rush"], [110, "food_poisoning"], [150, "northern_lights"], [195, "power_surge"]]), 0.0,
+		_evs([[50, "lunch_rush"], [85, "storm"], [140, "food_poisoning"], [170, "northern_lights"], [215, "power_surge"]]), 0.0,
 		_goal_list(8))
-	_level("arctic_4", 4, 10, "Penguin Parade", "A bigger crowd and fussier tastes. Keep the rinks spinning.",
-		"arctic", "medium", 4800, 29, 250.0, _waves(34, 250.0, T5, F5), W_ARC,
+	_level("arctic_4", 4, 10, "Penguin Parade", "A bigger crowd and fussier tastes. Refit at Penguin Point and keep the rinks spinning.",
+		"arctic", "medium", 4800, 29, 250.0, _waves(30, 250.0, T5, F5), W_ARC,
 		_evs([[50, "film_night"], [105, "lunch_rush"], [150, "northern_lights"], [195, "power_surge"]]), 90.0,
 		_goal_list(9))
 	_level("arctic_5", 5, 11, "Polar Express", "Full ship, tight budget, and the temperature keeps dropping.",
 		"arctic", "medium", 5000, 30, 260.0, _waves(37, 260.0, T5, F5), W_ARC,
 		_evs([[50, "lunch_rush"], [95, "captains_dinner"], [150, "northern_lights"], [195, "food_poisoning"]]), 80.0,
 		_goal_list(10))
-	_level("arctic_6", 6, 12, "Aurora Gala", "The grand finale of the north. Everyone wants everything.",
-		"arctic", "medium", 5200, 32, 270.0, _waves(40, 270.0, T5, F5), W_ARC,
+	_level("arctic_6", 6, 12, "Aurora Gala", "The grand finale of the north. Everyone wants everything, even a stop at Aurora Bay.",
+		"arctic", "medium", 5200, 32, 270.0, _waves(35, 270.0, T5, F5), W_ARC,
 		_evs([[45, "film_night"], [90, "captains_dinner"], [145, "northern_lights"], [190, "power_surge"], [215, "lunch_rush"]]), 75.0,
 		_goal_list(11))
 
 	# ---- Underworld -----------------------------------------------------------------------
-	_level("underworld_1", 1, 13, "Gloom Cruise", "Spooky! Ghosts drift through the decks. Click them away.",
+	_level("underworld_1", 1, 13, "Gloom Cruise", "Spooky! Ghosts drift through the decks. Click them away, or hire a warden.",
 		"underworld", "medium", 5200, 30, 240.0, _waves(32, 240.0, T5, F5), W_UND,
 		_evs([[90, "haunting"], [150, "lunch_rush"], [190, "power_surge"]]), 0.0,
 		_goal_list(12))
-	_level("underworld_2", 2, 14, "Ferryman's Special", "The guests are dead hungry. The ghosts are dead keen.",
+	_level("underworld_2", 2, 14, "Ferryman's Special", "The guests are dead hungry. The ghosts are dead keen. A storm is brewing.",
 		"underworld", "medium", 5400, 31, 250.0, _waves(36, 250.0, T5, F5), W_UND,
-		_evs([[55, "lunch_rush"], [115, "haunting"], [175, "power_surge"]]), 0.0,
+		_evs([[55, "lunch_rush"], [100, "haunting"], [130, "storm"], [190, "power_surge"]]), 0.0,
 		_goal_list(13))
 	_level("underworld_3", 3, 15, "Spectral Spa", "A bigger ship at last. Plenty of room for plenty of trouble.",
 		"underworld", "large", 6000, 32, 260.0, _waves(40, 260.0, T5, F5), W_UND,
-		_evs([[55, "film_night"], [110, "haunting"], [160, "food_poisoning"], [205, "power_surge"]]), 0.0,
+		_evs([[50, "film_night"], [100, "haunting"], [135, "storm"], [190, "food_poisoning"], [230, "power_surge"]]), 0.0,
 		_goal_list(14))
-	_level("underworld_4", 4, 16, "Casino of Souls", "High rollers and higher stakes. Watch the slot machines.",
-		"underworld", "large", 6600, 34, 270.0, _waves(46, 270.0, T5, F5), W_UND,
+	_level("underworld_4", 4, 16, "Casino of Souls", "High rollers and higher stakes. Refit at Styx Landing and watch the slot machines.",
+		"underworld", "large", 6600, 34, 270.0, _waves(41, 270.0, T5, F5), W_UND,
 		_evs([[50, "lunch_rush"], [100, "haunting"], [150, "captains_dinner"], [205, "power_surge"]]), 90.0,
 		_goal_list(15))
 	_level("underworld_5", 5, 17, "Haunted Holiday", "Fully booked, fully haunted. Do not panic.",
 		"underworld", "large", 7000, 35, 285.0, _waves(51, 285.0, T5, F5), W_UND,
-		_evs([[45, "film_night"], [90, "haunting"], [140, "lunch_rush"], [190, "food_poisoning"], [235, "haunting"]]), 85.0,
+		_evs([[45, "film_night"], [90, "haunting"], [145, "storm"], [205, "food_poisoning"], [240, "haunting"]]), 85.0,
 		_goal_list(16))
-	_level("underworld_6", 6, 18, "Crown of Shadows", "The final voyage. Every problem at once, all the way down.",
-		"underworld", "large", 7400, 36, 300.0, _waves(56, 300.0, T5, F5), W_UND,
+	_level("underworld_6", 6, 18, "Crown of Shadows", "The final voyage. Every problem at once, with a last stop at Charon's Wharf.",
+		"underworld", "large", 7400, 36, 300.0, _waves(49, 300.0, T5, F5), W_UND,
 		_evs([[45, "lunch_rush"], [85, "haunting"], [135, "captains_dinner"], [185, "power_surge"], [225, "haunting"], [250, "food_poisoning"]]), 70.0,
 		_goal_list(17))

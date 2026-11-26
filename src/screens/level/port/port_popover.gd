@@ -9,6 +9,8 @@ signal sell_requested(uid: int)
 
 const TAIL_H: float = 12.0
 
+## Quick refit at a port stop: upgrades only (no Move, no Sell).
+var refit: bool = false
 var uid: int = -1
 var flipped: bool = false      # true = popover sits BELOW the room (tail points up)
 var tail_x: float = 0.0        # tail position inside this control
@@ -116,7 +118,7 @@ func _rebuild() -> void:
 		stars.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		head.add_child(stars)
 	v.add_child(head)
-	if room.locked:
+	if room.locked and not refit:
 		var lock := UIKit.hbox(8)
 		var li := IconView.new()
 		li.icon = &"lock"
@@ -132,7 +134,7 @@ func _rebuild() -> void:
 	move_button = null
 	sell_button = null
 	upgrade_button = null
-	if not room.locked:
+	if not room.locked and not refit:
 		var mv := _action_column(UIKit.secondary_button("Move"), "Free", Palette.TEAL_DARK)
 		move_button = mv["button"]
 		move_button.pressed.connect(func() -> void: move_requested.emit(uid))
@@ -144,7 +146,7 @@ func _rebuild() -> void:
 		upgrade_button.disabled = not bool(up_info["ok"])
 		upgrade_button.pressed.connect(func() -> void: upgrade_requested.emit(uid))
 		acts.add_child(up["box"])
-	if not room.locked:
+	if not room.locked and not refit:
 		var chk: Dictionary = _port.grid.can_sell(uid)
 		var refund: int = _port.grid.refund_for(uid)
 		var hint: String = "%d%% back" % int(round(SimConst.SELL_REFUND * 100.0)) if bool(chk["ok"]) else String(chk["reason"])

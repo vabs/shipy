@@ -602,7 +602,12 @@ func _test_sfx_synthesis() -> void:
 			continue
 		_check(SU.to_db(SU.peak(b)) <= -1.0, "%s peak <= -1 dBFS (%.2f)" % [sfx_name, SU.to_db(SU.peak(b))])
 		_check(absf(SU.mean(b)) < 0.002, "%s no DC offset" % sfx_name)
-		_check(absf(b[0]) < 0.01 and absf(b[b.size() - 1]) < 0.01, "%s starts/ends silent (no click)" % sfx_name)
+		if sfx_name in SfxBank.LOOPING:
+			# a loop (the storm's rain bed) must be seamless instead of faded: the last sample flows into the first
+			_check(absf(b[0] - b[b.size() - 1]) < 0.1, "%s loops seamlessly" % sfx_name)
+			_eq(b.size(), SfxBank.loop_frames(sfx_name), "%s has the advertised loop length" % sfx_name)
+		else:
+			_check(absf(b[0]) < 0.01 and absf(b[b.size() - 1]) < 0.01, "%s starts/ends silent (no click)" % sfx_name)
 		_check(SU.rms(b) > 0.003, "%s is audible" % sfx_name)
 	# Rendering is deterministic.
 	var x: PackedFloat32Array = SfxBank.render(&"mess_splat")

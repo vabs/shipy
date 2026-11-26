@@ -2,41 +2,22 @@ class_name HintDirector
 extends Node
 ## Contextual "first time" tips for every level (after / instead of the med_1 walkthrough): the first sickness,
 ## ghost, queue anger, mutiny warning, each kind of event, first elevator / tier II / tier III availability and
-## the first visit to the Arctic or Underworld (wording follows what is unlocked). Each shows ONCE per save (HintStore), at most one at a time, never
+## the first visit to the Arctic or Underworld (wording follows what is unlocked), and the v2 additions: a new crew role in port, VIPs,
+## families, crew tiredness, storms, the port stop + Quick refit, company funds and the report / heatmap buttons on the first results.
+## Each shows ONCE per save (HintStore), at most one at a time, never
 ## during the first 5 s of a voyage, never while the tutorial bubble is up, and only if Settings.show_tutorial_hints.
 ##
 ## Hosted by LevelScreen:  h.setup(screen, store);  h.on_port_started(port_phase);  h.on_voyage_started();
-##                         h.on_voyage_finished()
+##                         h.on_voyage_finished();  h.on_results_shown(result, unlocks)
 ## Dev: `--hint=<id>` queues that hint right away (screenshots); ids are the keys of HINTS.
 
 const MIN_VOYAGE_TIME: float = 5.0
 const GAP_AFTER: float = 2.5
 const STALE_AFTER: float = 30.0
+## Design px kept free at the bottom of the results screen while a hint card is up.
+const RESULTS_ROOM: float = 130.0
 
-const HINTS: Dictionary = {
-	&"sick": {"icon": &"sick", "text": "Sick guests need a **Medbay**. Build one in port to cure them."},
-	&"sick_locked": {"icon": &"sick", "text": "Sick guests recover slowly. The **Medbay** unlocks soon!"},
-	&"sick_have": {"icon": &"sick", "text": "A guest is sick! They will head to the **Medbay** to get cured."},
-	&"ghost": {"icon": &"ghost", "text": "Click ghosts to **banish** them! They scare guests."},
-	&"queue_anger": {"icon": &"angry", "text": "Guests leave long queues. **Add another room** or upgrade it!"},
-	&"queue_anger_basic": {"icon": &"angry", "text": "Guests leave long queues. **Add another room** to share the load!"},
-	&"mutiny": {"icon": &"warning", "text": "Guests are furious! **Fix problems fast** or they take over the ship."},
-	&"elevator": {"icon": &"elevator", "text": "**Elevators** are unlocked! One shaft links every deck at once."},
-	&"tier2": {"icon": &"star", "text": "**Upgrades** are open! Click a room, then Upgrade for more space and speed."},
-	&"tier3": {"icon": &"star", "text": "**Tier III** upgrades are open! Your busiest rooms can go even faster."},
-	&"dest_arctic": {"icon": &"ice_rink", "text": "Brr! Guests lose cheer on the **top deck** here. Keep the fun indoors."},
-	&"dest_underworld": {"icon": &"ghost", "text": "Spooky! **Ghosts** drift through the decks. Click them before they scare guests."},
-	&"event_lunch_rush": {"icon": &"buffet", "text": "Lunch rush! Everyone is hungry, so **food rooms** get busy."},
-	&"event_power_surge": {"icon": &"breakdown", "text": "Power surge! Machines break. **Hold** on a broken room to repair it."},
-	&"event_film_night": {"icon": &"cinema", "text": "Film night! The **cinema** is extra popular for a while."},
-	&"event_pool_party": {"icon": &"pool", "text": "Pool party! The **pool** draws a crowd, and crowds make messes."},
-	&"event_food_poisoning": {"icon": &"sick", "text": "Food poisoning! Sick guests need a **Medbay**."},
-	&"event_food_poisoning_locked": {"icon": &"sick", "text": "Food poisoning! Sick guests recover slowly until the **Medbay** unlocks."},
-	&"event_captains_dinner": {"icon": &"restaurant", "text": "Captain's dinner! The **restaurant** is packed and pays well."},
-	&"event_heat_wave": {"icon": &"pool", "text": "Heat wave! Sweaty guests keep **toilets and the pool** busy."},
-	&"event_northern_lights": {"icon": &"star", "text": "Northern lights! Guests rush to the **top deck** to watch."},
-	&"event_haunting": {"icon": &"ghost", "text": "Haunting! Ghosts are aboard. **Click them** away!"},
-}
+const HINTS: Dictionary = HintTexts.HINTS
 
 var screen: Node = null
 var store: HintStore = null
@@ -90,8 +71,21 @@ func on_port_started(pp: Node) -> void:
 	elif level.destination == &"underworld":
 		request(&"dest_underworld", 4.6)
 	var port: PortState = screen.port
+	# v2 content, newest feature first (hints that cannot be shown within STALE_AFTER simply wait for the next level)
+	for role in ContentStore.staff_available(level.campaign_index, level.destination):
+		var def: StaffDef = role
+		if def.unlock_level > 1:
+			request(StringName("crew_" + String(def.id)), 5.0)
+	if not level.vips.is_empty():
+		request(&"vip_plan", 5.5)
+	if level.group_ratio > 0.0:
+		request(&"families", 6.0)
+	if level.staff_fatigue:
+		request(&"fatigue", 6.5)
+	if not level.port_stop.is_empty():
+		request(&"portstop_plan", 7.0)
 	if port.grid.room_lock_reason(&"elevator") == "" and level.campaign_index >= 7:
-		request(&"elevator", 6.5)
+		request(&"elevator", 7.5)
 	if level.campaign_index >= SimConst.TIER3_UNLOCK_LEVEL:
 		request(&"tier3", 9.0)
 	elif level.campaign_index >= SimConst.TIER2_UNLOCK_LEVEL:
@@ -114,6 +108,10 @@ func on_voyage_started() -> void:
 	w.guest_patience_out.connect(func(_g: int, _r: int) -> void:
 		request(&"queue_anger" if _upgrades_open() else &"queue_anger_basic", 1.0))
 	w.mutiny_warning.connect(func(_s: float) -> void: request(&"mutiny", 0.5))
+	w.vip_boarded.connect(func(_g: int, kind: StringName) -> void: request(StringName("vip_" + String(kind)), 1.4))
+	w.staff_tired.connect(func(_s: int) -> void: request(&"tired" if w.has_room_type(&"crew_quarters") else &"tired_none", 1.5))
+	w.port_stop_started.connect(func(_n: String) -> void: request(&"portstop", 1.2))
+	w.port_stop_ready.connect(func() -> void: request(&"refit", 0.5))
 	w.event_started.connect(func(id: StringName) -> void:
 		if id == &"food_poisoning" or id == &"haunting":
 			var hid: StringName = StringName("event_" + String(id))
@@ -140,6 +138,16 @@ func on_voyage_finished() -> void:
 	_world = null
 	if card != null and is_instance_valid(card):
 		card.close()
+
+
+## The results panel is up: explain the company funds and the report / heatmap buttons the first time they show.
+func on_results_shown(result: Dictionary, unlocks: Dictionary) -> void:
+	_mode = &"results"
+	_queue.clear()
+	if int(unlocks.get("funds_earned", 0)) > 0 or int(result.get("payout", 0)) > 0:
+		request(&"funds", 2.6)
+	if result.has("report") and not (result["report"] as Dictionary).is_empty():
+		request(&"report", 2.6)
 
 
 # ---- queue ------------------------------------------------------------------------------------
@@ -199,6 +207,9 @@ func _blocked() -> bool:
 			return true
 	if _mode == &"" or (_mode == &"port" and screen.phase != 1):
 		return true
+	if _mode == &"results":
+		var res: Variant = screen.get("_results")
+		return res == null or not is_instance_valid(res) or not (res as Control).visible
 	return false
 
 
@@ -218,19 +229,39 @@ func _show(id: StringName, force: bool) -> void:
 	var d: Dictionary = HINTS[id]
 	card = HintCard.make(String(d["text"]), StringName(d["icon"]), 7.5)
 	layer.add_child(card)
+	_results_room(true)
 	card.closed.connect(func() -> void:
 		card = null
-		_gap = GAP_AFTER)
+		_gap = GAP_AFTER
+		_results_room(false))
 	_place_card()
 	card.play()
 	AudioManager.play_sfx(&"alert", 0.0, -9.0)
+
+
+## On the results screen the panel fills the middle: make it leave room at the bottom for the card while one is up.
+func _results_room(on: bool) -> void:
+	if _mode != &"results":
+		return
+	var res: Variant = screen.get("_results")
+	if res != null and is_instance_valid(res) and (res as Object).has_method(&"reserve_bottom"):
+		(res as Object).call(&"reserve_bottom", RESULTS_ROOM if on else 0.0)
 
 
 func _place_card() -> void:
 	if card == null or not is_instance_valid(card):
 		return
 	var bottom: float = screen.get_viewport().get_visible_rect().size.y - 210.0
-	if _mode == &"voyage" and screen.hud != null:
+	var refit_ui: Variant = screen.get("_refit_ui")
+	if _mode == &"voyage" and refit_ui != null and is_instance_valid(refit_ui) and (refit_ui as PortPhase).bar() != null:
+		bottom = (refit_ui as PortPhase).bar().global_position.y
+	elif _mode == &"results":
+		# bottom centre, just under the results buttons (the panel fills the middle of the screen)
+		var vp: Vector2 = screen.get_viewport().get_visible_rect().size
+		card.reset_size()
+		card.position = Vector2((vp.x - card.size.x) * 0.5, vp.y - card.size.y - 14.0)
+		return
+	elif _mode == &"voyage" and screen.hud != null:
 		var bb: Control = (screen.hud as VoyageHud).bottom_bar
 		if bb != null:
 			bottom = bb.global_position.y

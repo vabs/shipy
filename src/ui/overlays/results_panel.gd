@@ -10,6 +10,11 @@ extends Control
 ## result  = LevelDirector result {stars, goals:[{text, met}], rating, profit, ledger{tickets,spending,upkeep,wages,hires},
 ##           guests_total, guests_lost, served, mutiny, level_id}
 ## unlocks = SaveManager.record_result() return value (newly_unlocked_rooms / _destinations / _levels / _features)
+## `result.vips` ([{kind, grade, pay, detail}], docs/SPEC.md §13.5) adds a "VIP verdicts" plate (kind, how the review went and
+## the verdict chip with its money); VIP bonuses / penalties get their own lines in the voyage accounts. `result.groups`
+## ({count, split, kids}) adds a "Couples & families" pill.
+## Also shows the company funds earned (SPEC §13.1, from `unlocks.funds_earned / best_payout / funds_total` and
+## `result.payout`) and, when `result.report` exists, buttons for the Voyage report view (ReportView) and the heatmap.
 ## Star pops follow AudioManager's results jingle (first at 0.55 s, then every 0.5 s); this panel plays no star sfx itself.
 ## "Next" is disabled while the following level is locked (SaveManager.is_level_unlocked) and hidden after the last level.
 ## Click the card (not a button) to skip the reveal.
@@ -17,6 +22,9 @@ extends Control
 signal retry_pressed
 signal next_pressed
 signal map_pressed
+## "Show heatmap" was pressed (from the results or the voyage report): the host hides this panel, shows the heatmap
+## overlay and makes the panel visible again when the player comes back.
+signal heatmap_pressed
 
 ## Keys (Enter / ui_accept) do nothing for this long after the panel appears, so a Space / Enter pressed while the
 ## voyage ends cannot skip the results. Space never activates a button here (it is also the pause key).
@@ -59,6 +67,16 @@ var _hint: Label
 var _tip_panel: Control = null
 var _next_star_panel: Control = null
 var _shown_msec: int = 0
+var _funds_plate: Control = null
+var _funds_amount: Label = null
+var _funds_target: int = 0
+var _report_row: Control = null
+var _report_center: CenterContainer = null
+var _report_view: ReportView = null
+var _main_center: CenterContainer = null
+var _reserve: float = 0.0
+var _fit_tw: Tween = null
+var _funds_tw: Tween = null
 
 
 func _init() -> void:
@@ -93,7 +111,14 @@ func show_result(result: Dictionary, unlocks: Dictionary, level: LevelDef) -> vo
 	_ledger_rows.clear()
 	_chips.clear()
 	_stat_pills.clear()
+	_funds_plate = null
+	_report_row = null
+	_report_view = null
+	if _report_center != null:
+		_report_center.queue_free()
+		_report_center = null
 	_build()
+	_fit_card.call_deferred()
 	if is_inside_tree():
 		_start()
 	else:
@@ -134,9 +159,11 @@ func _build() -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_slide.add_child(center)
+	_main_center = center
 	_card = UIKit.card()
 	_card.custom_minimum_size = Vector2(1280, 0)
 	_card.gui_input.connect(_on_card_input)
+	_card.resized.connect(_fit_card)   # wrapping chips / late rows can make the card taller after the first layout pass
 	center.add_child(_card)
 	var outer := UIKit.vbox(12)
 	_card.add_child(UIKit.with_margin(outer, 10))
@@ -219,6 +246,38 @@ func _build() -> void:
 	_hint.visible = _hint.text != ""
 
 
+## Shrinks the card (around its centre) when a busy voyage (VIP verdicts, groups, a port stop, funds, unlocks...) makes it taller than
+## the screen, so the buttons never fall off the bottom. `_reserve` px at the bottom stay free (a first-time hint card sits there).
+## (A Container resets its children's scale, so the whole full-rect centre container is scaled. That container is never smaller than
+## the card, so a card taller than the screen makes it taller than the screen too: its centre is moved back onto the screen centre.)
+func _fit_card(animate: bool = false) -> void:
+	if _card == null or not is_instance_valid(_card) or _main_center == null or not is_instance_valid(_main_center) or not is_inside_tree():
+		return
+	var need: Vector2 = _card.get_combined_minimum_size()
+	var avail: float = maxf(size.y - 20.0 - _reserve, 200.0)
+	var f: float = clampf(avail / maxf(need.y, 1.0), 0.55, 1.0)
+	var box_h: float = maxf(size.y, need.y)
+	_main_center.pivot_offset = Vector2(size.x * 0.5, box_h * 0.5)
+	var shift: float = (size.y - box_h) * 0.5 - _reserve * 0.5
+	if _fit_tw != null and _fit_tw.is_valid():
+		_fit_tw.kill()
+	if animate:
+		_fit_tw = create_tween().set_parallel(true)
+		_fit_tw.tween_property(_main_center, "scale", Vector2(f, f), 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_fit_tw.tween_property(_main_center, "offset_top", shift, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_fit_tw.tween_property(_main_center, "offset_bottom", shift, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	else:
+		_main_center.scale = Vector2(f, f)
+		_main_center.offset_top = shift
+		_main_center.offset_bottom = shift
+
+
+## Keeps `px` free at the bottom of the screen (the hint director shows its card there) / gives it back with 0.
+func reserve_bottom(px: float) -> void:
+	_reserve = maxf(px, 0.0)
+	_fit_card(true)
+
+
 func _plate() -> PanelContainer:
 	var p := PanelContainer.new()
 	p.theme_type_variation = &"PlatePanel"
@@ -228,7 +287,7 @@ func _plate() -> PanelContainer:
 func _build_left(left: VBoxContainer) -> void:
 	if _mutiny():
 		var art := MutinyArt.new()
-		art.custom_minimum_size = Vector2(540, 240)
+		art.custom_minimum_size = Vector2(540, 220)
 		left.add_child(art)
 		var none := UIKit.star_row(0, 40.0)
 		none.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -281,6 +340,125 @@ func _build_left(left: VBoxContainer) -> void:
 		gv.add_child(h)
 		_goal_rows.append({"row": h, "check": chk})
 	left.add_child(gp)
+	_funds_plate = _build_funds_plate()
+	if _funds_plate != null:
+		left.add_child(_funds_plate)
+	_report_row = _build_report_row()
+	if _report_row != null:
+		left.add_child(_report_row)
+		_stat_pills.append(_report_row)
+
+
+## "Company funds" row (SPEC §13.1): what this voyage added to the Shipyard funds, or what to beat.
+func _build_funds_plate() -> Control:
+	if not _unlocks.has("best_payout") or not _result.has("payout"):
+		return null
+	var payout: int = int(_result.get("payout", 0))
+	var earned: int = int(_unlocks.get("funds_earned", 0))
+	var best: int = int(_unlocks.get("best_payout", 0))
+	var total: int = int(_unlocks.get("funds_total", 0))
+	_funds_target = earned
+	var p := _plate()
+	p.name = "FundsPlate"
+	var h := UIKit.hbox(12)
+	p.add_child(h)
+	var coin := GlyphView.new(&"coin", 46.0)
+	coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(coin)
+	var v := UIKit.vbox(0)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	h.add_child(v)
+	_funds_amount = Label.new()
+	_funds_amount.add_theme_font_override("font", UITheme.font_bold())
+	_funds_amount.add_theme_font_size_override("font_size", 25)
+	if earned > 0:
+		_funds_amount.text = "+%s company funds (new best!)" % OvUtil.money(earned)
+		_funds_amount.add_theme_color_override("font_color", GREEN)
+	elif best > 0:
+		_funds_amount.text = "Beat %s to earn funds" % OvUtil.money(best)
+		_funds_amount.add_theme_color_override("font_color", UITheme.TEXT_INK)
+	else:
+		_funds_amount.text = "Finish a voyage to earn funds"
+		_funds_amount.add_theme_color_override("font_color", UITheme.TEXT_INK)
+	_funds_amount.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(_funds_amount)
+	var sub: String
+	if _mutiny():
+		sub = "No payout after a mutiny"
+	else:
+		sub = "Voyage payout %s  -  %s in the bank" % [OvUtil.money(payout), OvUtil.money(total)]
+	var sl := UIKit.small_label(sub)
+	sl.add_theme_font_size_override("font_size", 16)
+	v.add_child(sl)
+	return p
+
+
+## "Voyage report" / "Show heatmap" buttons (only when the result carries telemetry).
+func _build_report_row() -> Control:
+	var report: Variant = _result.get("report", null)
+	if not (report is Dictionary) or (report as Dictionary).is_empty():
+		return null
+	var row := UIKit.hbox(10)
+	row.name = "ReportRow"
+	var rb := UIKit.secondary_button("Voyage report")
+	rb.custom_minimum_size = Vector2(0, 52)
+	rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	OvUtil.focusable(rb)
+	rb.pressed.connect(show_report)
+	row.add_child(rb)
+	var hb := UIKit.sun_button("Show heatmap")
+	hb.custom_minimum_size = Vector2(0, 52)
+	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	OvUtil.focusable(hb)
+	hb.pressed.connect(func() -> void: heatmap_pressed.emit())
+	row.add_child(hb)
+	return row
+
+
+# ================================================================================================
+# voyage report view
+# ================================================================================================
+## Swaps the results card for the Voyage report (ReportView). No-op without telemetry.
+func show_report() -> void:
+	var report: Variant = _result.get("report", null)
+	if not (report is Dictionary) or _report_view != null:
+		return
+	if _tw != null:
+		skip_reveal()
+	_report_view = ReportView.new()
+	_report_view.setup(report, _result, _level)
+	_report_view.back_pressed.connect(show_main)
+	_report_view.heatmap_pressed.connect(func() -> void: heatmap_pressed.emit())
+	_report_center = CenterContainer.new()
+	_report_center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_report_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_report_center.add_child(_report_view)
+	_slide.add_child(_report_center)
+	_main_center.visible = false
+	_report_view.pivot_offset = Vector2(640, 300)
+	_report_view.scale = Vector2(0.96, 0.96)
+	_report_view.modulate.a = 0.0
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(_report_view, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_report_view, "modulate:a", 1.0, 0.18)
+	_report_view.play_reveal()
+	_report_view.back_button().call_deferred("grab_focus")
+
+
+## Back from the report to the results card.
+func show_main() -> void:
+	if _report_view == null:
+		return
+	_report_center.queue_free()
+	_report_center = null
+	_report_view = null
+	_main_center.visible = true
+	_focus_default.call_deferred()
+
+
+func is_report_open() -> bool:
+	return _report_view != null
 
 
 func _build_right(right: VBoxContainer) -> void:
@@ -289,7 +467,14 @@ func _build_right(right: VBoxContainer) -> void:
 	led.add_child(lv)
 	lv.add_child(UIKit.small_label("VOYAGE ACCOUNTS"))
 	var ledger: Dictionary = _result.get("ledger", {})
-	for r in LEDGER_ROWS:
+	var rows: Array[Array] = LEDGER_ROWS.duplicate()
+	if _lget(ledger, "vip_bonus") > 0:
+		rows.insert(2, ["vip_bonus", "VIP bonuses", 1])
+	if _lget(ledger, "vip_fines") > 0:
+		rows.insert(rows.size() - 1, ["vip_fines", "VIP penalties", -1])
+	if _lget(ledger, "refit") > 0:
+		rows.append(["refit", "Port refit", -1])
+	for r in rows:
 		var key: String = r[0]
 		var sign_v: int = r[2]
 		var amount: int = _lget(ledger, key)
@@ -348,6 +533,33 @@ func _build_right(right: VBoxContainer) -> void:
 	_stat_pills.append(served)
 	_stat_pills.append(lost)
 	right.add_child(gh)
+	var groups_info: Dictionary = _result.get("groups", {})
+	if int(groups_info.get("count", 0)) > 0:
+		var split_n: int = int(groups_info.get("split", 0))
+		var gtxt: String = "%d couples & families" % int(groups_info["count"])
+		if int(groups_info["count"]) == 1:
+			gtxt = "1 couple / family"
+		if split_n > 0:
+			gtxt += ", %d split up" % split_n
+		var gp := _light_pill(&"family", gtxt)
+		gp.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		_stat_pills.append(gp)
+		right.add_child(gp)
+	# the mid-voyage port stop (SPEC §13.8): where, how many went ashore / boarded and what the refit added
+	var stop_info: Dictionary = _result.get("port_stop", {})
+	if not stop_info.is_empty():
+		var built: int = int(stop_info.get("rooms", 0)) + int(stop_info.get("upgrades", 0))
+		var stxt: String = "%s: %d ashore, %d boarded" % [String(stop_info.get("name", "Port")), int(stop_info.get("excursion", 0)), int(stop_info.get("boarded", 0))]
+		if built > 0:
+			stxt += ", refit +%d" % built
+		var sp := _light_pill(&"event", stxt)
+		sp.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		_stat_pills.append(sp)
+		right.add_child(sp)
+	var vip_plate: Control = _build_vip_plate()
+	if vip_plate != null:
+		right.add_child(vip_plate)
+		_stat_pills.append(vip_plate)
 	# next-star nudge
 	if not _mutiny() and _stars_n() < 3:
 		for g: Variant in _result.get("goals", []):
@@ -385,6 +597,75 @@ func _build_right(right: VBoxContainer) -> void:
 		th.add_child(tv)
 		right.add_child(tip)
 		_tip_panel = tip
+
+
+## "VIP verdicts": one row per VIP with the kind, how the review went and the verdict chip (grade + money).
+func _build_vip_plate() -> Control:
+	var vips: Array = _result.get("vips", [])
+	if vips.is_empty():
+		return null
+	var p := _plate()
+	p.name = "VipPlate"
+	var v := UIKit.vbox(6)
+	p.add_child(v)
+	v.add_child(UIKit.small_label("VIP VERDICTS"))
+	for e: Variant in vips:
+		var d: Dictionary = e
+		var kind: StringName = StringName(d.get("kind", &""))
+		var grade: StringName = StringName(d.get("grade", &""))
+		var row := UIKit.hbox(10)
+		row.add_child(GlyphView.new(kind, 42.0))
+		var col := UIKit.vbox(0)
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.alignment = BoxContainer.ALIGNMENT_CENTER
+		var nl := Label.new()
+		nl.text = VipSim.kind_label(kind)
+		nl.add_theme_font_override("font", UITheme.font_bold())
+		nl.add_theme_font_size_override("font_size", 22)
+		col.add_child(nl)
+		var dl := UIKit.small_label(String(d.get("detail", "")))
+		dl.add_theme_font_size_override("font_size", 16)
+		col.add_child(dl)
+		row.add_child(col)
+		row.add_child(_vip_chip(grade, int(d.get("pay", 0))))
+		v.add_child(row)
+	return p
+
+
+## Verdict chip: grade word + money, tinted by the grade.
+func _vip_chip(grade: StringName, pay: int) -> Control:
+	var tint: Color = GREEN if grade == VipSim.GREAT else (RED if grade == VipSim.BAD else Palette.TEAL_DARK)
+	var c := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(tint.r, tint.g, tint.b, 0.14)
+	sb.border_color = tint
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(14)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	sb.content_margin_top = 4
+	sb.content_margin_bottom = 4
+	sb.anti_aliasing = true
+	c.add_theme_stylebox_override("panel", sb)
+	c.custom_minimum_size = Vector2(124, 0)
+	var vb := UIKit.vbox(-2)
+	vb.alignment = BoxContainer.ALIGNMENT_CENTER
+	var gl := Label.new()
+	gl.text = VipSim.grade_label(grade).to_upper()
+	gl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	gl.add_theme_font_override("font", UITheme.font_bold())
+	gl.add_theme_font_size_override("font_size", 22)
+	gl.add_theme_color_override("font_color", tint)
+	vb.add_child(gl)
+	var ml := Label.new()
+	ml.text = OvUtil.money_signed(pay) if pay != 0 else "no change"
+	ml.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ml.add_theme_font_override("font", UITheme.font_bold())
+	ml.add_theme_font_size_override("font_size", 16)
+	ml.add_theme_color_override("font_color", tint if pay != 0 else UITheme.TEXT_MUTED)
+	vb.add_child(ml)
+	c.add_child(vb)
+	return c
 
 
 func _light_pill(icon: StringName, text: String) -> StatPill:
@@ -438,7 +719,15 @@ func _build_unlocks(right: VBoxContainer) -> void:
 		var dd: DestinationDef = ContentDB.destination(did)
 		items.append(_chip(&"star", (dd.display_name if dd != null else String(did)) + " unlocked", "NEW DESTINATION", Palette.TEAL))
 	for fid: StringName in _unlocks.get("newly_unlocked_features", []):
-		items.append(_chip(&"wrench", SaveManager.feature_display_name(fid), "NEW UPGRADE", Palette.LILAC_DARK))
+		var role_id: StringName = SaveManager.staff_role_of_feature(fid)
+		if role_id != &"":
+			items.append(_chip(IconArt.role_icon(role_id), SaveManager.feature_display_name(fid), "NEW CREW", Palette.role_color(role_id)))
+		elif fid == &"guests_vips":
+			items.append(_chip(&"vip", SaveManager.feature_display_name(fid), "NEW GUESTS", Palette.SUN_DEEP))
+		elif fid == &"guests_kids":
+			items.append(_chip(&"kid", SaveManager.feature_display_name(fid), "NEW GUESTS", Palette.PINK))
+		else:
+			items.append(_chip(&"wrench", SaveManager.feature_display_name(fid), "NEW UPGRADE", Palette.LILAC_DARK))
 	var lvl_ids: Array = _unlocks.get("newly_unlocked_levels", [])
 	if not lvl_ids.is_empty():
 		var ld: LevelDef = ContentDB.level(lvl_ids[0])
@@ -486,6 +775,8 @@ func _start() -> void:
 		_next_star_panel.modulate.a = 0.0
 	_btn_row.modulate.a = 0.0
 	_hint.modulate.a = 0.0
+	if _funds_plate != null:
+		_funds_plate.modulate.a = 0.0
 	# card entrance
 	_backdrop.modulate.a = 0.0
 	_slide.position = Vector2(0, 170)
@@ -515,6 +806,8 @@ func _start() -> void:
 	_tw.tween_callback(_reveal_profit).set_delay(0.6 + 0.12 * float(_ledger_rows.size()) + 0.1)
 	for i in range(_stat_pills.size()):
 		_tw.tween_callback(_reveal_pill.bind(i)).set_delay(1.35 + 0.12 * float(i))
+	if _funds_plate != null:
+		_tw.tween_callback(_reveal_funds).set_delay(1.6)
 	# unlock chips after the last star lands
 	var chip_t: float = STAR_START + STAR_GAP * float(maxi(n, 1)) + 0.15
 	if _chip_title != null:
@@ -593,6 +886,21 @@ func _reveal_profit() -> void:
 	tw.parallel().tween_property(lab, "scale", Vector2.ONE, 0.5).set_delay(0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
+func _reveal_funds() -> void:
+	if _funds_plate == null:
+		return
+	_funds_plate.modulate.a = 1.0
+	if _skipped or _funds_target <= 0:
+		return
+	OvUtil.pop_in(_funds_plate, 0.0, 0.35)
+	var label_text: String = _funds_amount.text
+	var suffix: String = label_text.substr(label_text.find(" company"))
+	if _funds_tw != null:
+		_funds_tw.kill()
+	_funds_tw = create_tween()
+	_funds_tw.tween_method(func(v: float) -> void: _funds_amount.text = "+%s%s" % [OvUtil.money(int(round(v))), suffix], 0.0, float(_funds_target), 0.7).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
 func _reveal_pill(i: int) -> void:
 	var p: Control = _stat_pills[i]
 	p.modulate.a = 1.0
@@ -632,6 +940,10 @@ func _reveal_buttons() -> void:
 func _input(event: InputEvent) -> void:
 	if not visible or _shown_msec == 0:
 		return
+	if _report_view != null and (event.is_action_pressed(&"cancel") or event.is_action_pressed(&"ui_cancel")):
+		get_viewport().set_input_as_handled()
+		show_main()
+		return
 	var ke := event as InputEventKey
 	var is_space: bool = ke != null and (ke.keycode == KEY_SPACE or ke.physical_keycode == KEY_SPACE)
 	var in_grace: bool = Time.get_ticks_msec() - _shown_msec < KEY_GRACE_MSEC
@@ -664,6 +976,12 @@ func skip_reveal() -> void:
 	_reveal_profit()
 	for i in range(_stat_pills.size()):
 		_reveal_pill(i)
+	if _funds_plate != null:
+		_funds_plate.modulate.a = 1.0
+		if _funds_tw != null:
+			_funds_tw.kill()
+		if _funds_target > 0:
+			_funds_amount.text = "+%s company funds (new best!)" % OvUtil.money(_funds_target)
 	if _chip_title != null:
 		_reveal_chip_title()
 	for i in range(_chips.size()):

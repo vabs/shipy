@@ -14,17 +14,26 @@ var locked: bool = false
 var door_x: float = 0.0
 var top_deck: bool = false
 
-## Guest ids currently using the room / waiting in line (front first).
+## Guest ids currently using the room / waiting in line (front first). Crew quarters: `users` holds the
+## StaffMember ids that own a bunk (reserved while walking there, asleep once arrived), `slots` the bunk indices.
 var users: Array[int] = []
 var queue: Array[int] = []
 ## slot index -> guest id (-1 free). Size = capacity.
 var slots: Array[int] = []
 ## Cabin: guest ids assigned a bed.
 var sleepers: Array[int] = []
+## Cabin: beds held for the members of a group that has not finished boarding yet (docs/SPEC.md §13.6).
+var reserved: int = 0
+## Celebrity VIPs currently using this room: lifts its appeal for everybody else (docs/SPEC.md §13.5).
+var celeb_users: int = 0
+## Appeal multiplier for grown-ups (RoomDef.adult_mult, cached for the guests' decision loop).
+var adult_mult: float = 1.0
 ## Guests walking here (not yet in line); used by the guests' wait estimate.
 var incoming: int = 0
 
 var broken: bool = false
+## Shut by a storm (docs/SPEC.md §13.7): a top-deck room nobody can use (not broken: nothing to repair).
+var closed: bool = false
 var health: float = 0.0
 var max_health: float = 0.0
 var repair_progress: float = 0.0
@@ -39,6 +48,10 @@ var svc: float = 1.0
 var door_node: int = 0
 var need_idx: PackedInt32Array = PackedInt32Array()
 var need_amt: PackedFloat32Array = PackedFloat32Array()
+## Chef effect (StaffSim keeps these in sync): service time and mess chance multipliers, true while a chef is stationed.
+var svc_mult: float = 1.0
+var mess_mult: float = 1.0
+var chef_on: bool = false
 
 
 func capacity() -> int:
@@ -88,6 +101,15 @@ func slot_of(gid: int) -> int:
 	return -1
 
 
-## Free beds in a cabin.
+func is_crew_quarters() -> bool:
+	return def.id == &"crew_quarters"
+
+
+## Free bunks in a crew quarters.
+func free_bunks() -> int:
+	return capacity() - users.size()
+
+
+## Free beds in a cabin (beds held for a boarding group do not count).
 func free_beds() -> int:
-	return capacity() - sleepers.size()
+	return capacity() - sleepers.size() - reserved

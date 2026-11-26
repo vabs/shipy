@@ -1,6 +1,10 @@
 class_name VoyageSelfTest
 extends Node
-## Interaction self-tests: run with  --scene=level --level=<id> --phase=voyage --selftest=clean|repair|assign|ghost|roster
+## Interaction self-tests: run with  --scene=level --level=<id> --phase=voyage --selftest=clean|repair|assign|ghost|roster|crew
+## (`flow`: --scene=level --level=<id> --selftest=flow [--lastvoyage=on]: port -> set sail -> results -> retry; with --lastvoyage=on it
+## also checks that the port's "Last voyage" heatmap and toggle are gone once the ship sails and the results' heatmap still opens)
+## (`crew`: --level=underworld_3 --crew=janitor:1,medic:1,entertainer:1,chef:1,warden:1; real clicks send each new role
+## to its target and the crew quarters)
 ## The test zooms the camera onto the target (so the zoom/pan AND the ship bob transforms are involved), then
 ## injects REAL InputEvents (Viewport.push_input) at the screen position of a mess / broken room / crew / ghost
 ## and prints PASS or FAIL depending on whether the sim reacted. Exit code 0 = pass, 1 = fail.
@@ -100,6 +104,8 @@ func _run() -> void:
 			await _test_repair()
 		"assign":
 			await _test_assign()
+		"crew":
+			await _test_crew()
 		"ghost":
 			await _test_ghost()
 		"roster":
@@ -240,6 +246,90 @@ func _test_assign() -> void:
 	var st: StaffMember = world.staff_by_id(s.id)
 	var ok: bool = st.job != null and st.job.target_id == m.id and st.job.claimed_by == st.id and input.selected_staff_id == -1
 	_done(ok, "crew %d -> mess %d, job target=%s, state=%s" % [s.id, m.id, str(st.job.target_id) if st.job != null else "none", String(st.state)])
+
+
+## Screen position of a spot in the ceiling strip of a room (clear of the guests inside it).
+func _room_click_spot(uid: int) -> Vector2:
+	var rc: Rect2 = renderer.room_rect(uid)
+	return await _focus_and_screen(rc.position + Vector2(rc.size.x * 0.5, 22.0))
+
+
+## Selects a crew member and clicks `screen_p`; true if the click gave that member an order (selection cleared).
+func _order(s: StaffMember, screen_p: Vector2) -> bool:
+	input.select_staff(s.id)
+	await _click(screen_p)
+	return input.selected_staff_id == -1
+
+
+func _test_crew() -> void:
+	var by: Dictionary = {}
+	for s in world.staff:
+		by[s.role] = s
+	for role in [&"janitor", &"medic", &"entertainer", &"chef"]:
+		if not by.has(role):
+			_done(false, "needs --crew=janitor:1,medic:1,entertainer:1,chef:1 (missing %s)" % role)
+			return
+	var fails: PackedStringArray = []
+	var food: RoomRuntime = null
+	var fun_room: RoomRuntime = null
+	var quarters: RoomRuntime = null
+	for r in world.room_sim.service_rooms:
+		if food == null and r.def.category == &"food":
+			food = r
+		if fun_room == null and r.def.category == &"fun":
+			fun_room = r
+	if not world.room_sim.crew_rooms.is_empty():
+		quarters = world.room_sim.crew_rooms[0]
+	if food == null or fun_room == null or quarters == null:
+		_done(false, "level needs a food room, a fun room and crew quarters")
+		return
+	# 1) medic -> a sick guest standing in the corridor
+	var sick: Guest = null
+	for g in world.guests:
+		if g.mode == Guest.WANDER and not g.sick:
+			sick = g
+			break
+	if sick == null:
+		_done(false, "no wandering guest to make sick")
+		return
+	sick.clear_route()
+	sick.set_position(0, 20.0)
+	sick.hold_until = 1.0e9
+	world.problems.infect(world, sick)
+	var med: StaffMember = by[&"medic"]
+	renderer.update(0.0)   # the guest was just moved: refresh the prepared positions before reading them
+	await _frames(2)
+	var gp: Vector2 = await _focus_and_screen(renderer.local_pos_of(&"guest", sick.id))
+	if not await _order(med, gp) or med.job == null or med.job.kind != &"sick" or med.job.target_id != sick.id:
+		fails.append("medic -> sick guest")
+	# a healthy guest is refused (selection is dropped by the click, no job)
+	# 2) entertainer -> a room
+	var ent: StaffMember = by[&"entertainer"]
+	if not await _order(ent, await _room_click_spot(fun_room.uid)) or ent.aura_uid != fun_room.uid or ent.goal != &"perform":
+		fails.append("entertainer -> %s (aura_uid %d)" % [fun_room.def.id, ent.aura_uid])
+	# 3) chef -> a food room
+	var chef: StaffMember = by[&"chef"]
+	if not await _order(chef, await _room_click_spot(food.uid)) or chef.aura_uid != food.uid or chef.goal != &"station":
+		fails.append("chef -> %s (aura_uid %d)" % [food.def.id, chef.aura_uid])
+	# 4) chef -> a non-food room is refused with the selection kept or dropped, but never assigned
+	var chef_goal: int = chef.aura_uid
+	input.select_staff(chef.id)
+	await _click(await _room_click_spot(fun_room.uid))
+	if chef.aura_uid != chef_goal:
+		fails.append("chef was sent to a non-food room")
+	input.cancel()
+	# 5) any crew -> crew quarters (rest)
+	var jan: StaffMember = by[&"janitor"]
+	jan.energy = 35.0
+	if not await _order(jan, await _room_click_spot(quarters.uid)) or jan.rest_uid != quarters.uid:
+		fails.append("janitor -> crew quarters (rest_uid %d)" % jan.rest_uid)
+	# 6) a fully rested crew member is not sent to bed
+	med.energy = 100.0
+	input.select_staff(med.id)
+	await _click(await _room_click_spot(quarters.uid))
+	if med.rest_uid != -1:
+		fails.append("a rested medic was sent to rest")
+	_done(fails.is_empty(), "medic/entertainer/chef/rest orders by real clicks" if fails.is_empty() else "; ".join(fails))
 
 
 func _test_roster() -> void:
@@ -458,8 +548,11 @@ func _test_flow() -> void:
 	var rooms0: int = screen.port.layout.rooms.size()
 	var port0: PortState = screen.port
 	var in_port: bool = screen.phase == screen.Phase.PORT and screen._port_ui != null
+	# (--lastvoyage=on: the port starts with the "Last voyage" heatmap showing; it must not follow the player to sea)
+	var had_heat: bool = screen._last_toggle != null and screen._heat != null
 	screen._on_set_sail()
 	await _frames(10)
+	var stale_heat: bool = had_heat and (screen._heat != null or screen._last_toggle != null)
 	var voyage: bool = screen.phase == screen.Phase.VOYAGE and screen.world != null and screen.ctl != null
 	if not voyage:
 		_done(false, "no voyage after set sail (in_port=%s)" % str(in_port))
@@ -467,7 +560,17 @@ func _test_flow() -> void:
 	var w: SimWorld = screen.world
 	screen.ctl.set_speed(3)
 	screen.ctl.start_delay = 0.0
-	screen.ctl.fast_forward(w.duration + 5.0)
+	# (a level with a port stop holds still at the Quick refit until somebody presses "Cast off!")
+	var casts: int = 0
+	while not w.finished and casts < 4:
+		screen.ctl.fast_forward(w.duration + 5.0)
+		await _frames(4)
+		if w.port_stop.is_ready():
+			casts += 1
+			if screen._refit_ui != null:
+				screen._on_cast_off()
+			else:
+				w.cast_off()
 	var waited: float = 0.0
 	while screen.phase != screen.Phase.RESULTS and waited < 8.0:
 		await get_tree().create_timer(0.25).timeout
@@ -476,6 +579,15 @@ func _test_flow() -> void:
 	if not results:
 		_done(false, "no results overlay (phase=%d, finished=%s)" % [screen.phase, str(w.finished)])
 		return
+	var heat_ok: bool = not stale_heat
+	if had_heat:
+		# the results' own "Show heatmap" must work (it does nothing while a stale port heatmap still holds the overlay)
+		screen._open_heatmap(w.result.get("report", {}), "Back to results", true)
+		await _frames(2)
+		heat_ok = heat_ok and screen._heat != null
+		screen._close_heatmap(true)
+		await _frames(2)
+		heat_ok = heat_ok and screen._heat == null and screen._results.visible
 	var stars: int = int(w.result.get("stars", -1))
 	var old_screen: Node = screen
 	# this node lives under the screen that Retry frees: move it to the root so the check can finish
@@ -486,7 +598,7 @@ func _test_flow() -> void:
 	await _frames(12)
 	var cur: Node = Router.current
 	var new_ok: bool = cur != old_screen and cur != null and cur.get("phase") == cur.Phase.PORT and cur.port == port0 and cur.port.layout.rooms.size() == rooms0
-	_done(in_port and voyage and results and new_ok, "port=%s voyage=%s results=%s (stars %d, rating %.0f) retry->port with %d rooms kept=%s" % [in_port, voyage, results, stars, float(w.result.get("rating", 0.0)), rooms0, new_ok])
+	_done(in_port and voyage and results and new_ok and heat_ok, "port=%s voyage=%s results=%s (stars %d, rating %.0f) retry->port with %d rooms kept=%s%s" % [in_port, voyage, results, stars, float(w.result.get("rating", 0.0)), rooms0, new_ok, ("; last-voyage heatmap cleared at sea and the results heatmap opens=%s" % str(heat_ok)) if had_heat else ""])
 
 
 ## Elevator: whenever guests ride the lift the rendered car must be at (about) their deck.

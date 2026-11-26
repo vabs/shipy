@@ -2,10 +2,12 @@ extends SceneTree
 ## Balance sweep. For each level: AutoBuilder layout + {passive, human, active} AutoPlayer x N seeds.
 ##   godot --headless --path . --script res://tests/balance.gd -- [--levels=med_1,arctic_3] [--seeds=5] [--base=1000]
 ##        [--csv=res://tests/out/balance.csv] [--knobs=mess:1.5,health:0.7,decay:1.2] [--modes=passive,human,active]
+## Relative knobs: messx healthx decayx patiencex multiply the level's own numbers.
+## Diagnostic knobs: vips:0 groups:0 fatigue:0 port:0 storm:0 switch that feature off for the level (to see what it costs).
 ## Prints compact tables and writes tests/out/balance.csv (one row per run).
 
-const CSV_HEADER: String = "level,mode,seed,rating,stars,g1,g2,g3,profit,lost,served,avg_queue,peak_queue,avg_problems,peak_problems,messes,mess_spread,cleaned,breakdowns,repairs,sick,ghosts,banished,patience_outs,slips,mutiny,time"
-const KEYS: Array[String] = ["rate", "stars", "profit", "lost", "avgq", "peakq", "prob", "peakp", "msg", "brk", "sick", "gh"]
+const CSV_HEADER: String = "level,mode,seed,rating,stars,g1,g2,g3,profit,lost,served,avg_queue,peak_queue,avg_problems,peak_problems,messes,mess_spread,cleaned,breakdowns,repairs,sick,ghosts,banished,patience_outs,slips,mutiny,time,vip_great,vip_ok,vip_bad,seasick,rests,naps"
+const KEYS: Array[String] = ["rate", "stars", "profit", "lost", "avgq", "peakq", "prob", "peakp", "msg", "brk", "sick", "gh", "vg", "vo", "vb", "seas"]
 
 
 func _init() -> void:
@@ -33,6 +35,26 @@ func _init() -> void:
 					"crit": SimConst.SAT_CRIT_RATE = float(q[1])
 					"use": SimConst.SAT_USE_GAIN = float(q[1])
 					"fav": SimConst.SAT_USE_GAIN_FAV = float(q[1])
+		elif a.begins_with("--sim="):
+			# experiment: --sim=drain:1.5,nap:6,rest:10,tired_speed:0.8,tired_work:1.25,celeb_pat:0.6,vip_w:2,walk:0.3,aura:0.8
+			for kv in a.substr(6).split(","):
+				var q2: PackedStringArray = kv.split(":")
+				match q2[0]:
+					"drain": SimConst.STAFF_DRAIN_WORK = float(q2[1])
+					"walk": SimConst.STAFF_DRAIN_WALK = float(q2[1])
+					"aura": SimConst.STAFF_DRAIN_AURA = float(q2[1])
+					"nap": SimConst.STAFF_NAP_RATE = float(q2[1])
+					"rest": SimConst.STAFF_REST_RATE = float(q2[1])
+					"tired_at": SimConst.STAFF_TIRED_ENERGY = float(q2[1])
+					"tired_speed": SimConst.STAFF_TIRED_SPEED = float(q2[1])
+					"tired_work": SimConst.STAFF_TIRED_WORK = float(q2[1])
+					"celeb_pat": SimConst.CELEB_PATIENCE_MULT = float(q2[1])
+					"vip_w": SimConst.VIP_RATING_WEIGHT = float(q2[1])
+					"insp_great": SimConst.INSPECTOR_GREAT = int(q2[1])
+					"insp_ok": SimConst.INSPECTOR_OK = int(q2[1])
+					"celeb_great": SimConst.CELEB_GREAT = float(q2[1])
+					"celeb_ok": SimConst.CELEB_OK = float(q2[1])
+					"critic_great": SimConst.CRITIC_GREAT = float(q2[1])
 		elif a.begins_with("--needs="):
 			var nr: PackedStringArray = a.substr(8).split(":")
 			SimConst.INITIAL_NEED_MIN = float(nr[0])
@@ -52,6 +74,7 @@ func _init() -> void:
 	var rows: PackedStringArray = [CSV_HEADER]
 	var tot: Dictionary = {}
 	var lvls: int = 0
+	var vk: Dictionary = {}  # "mode kind" -> [great, ok, bad]
 	var lines_a: PackedStringArray = []
 	var lines_b: PackedStringArray = []
 	for lvl in ContentStore.campaign():
@@ -66,6 +89,27 @@ func _init() -> void:
 					"decay": lvl.decay_mult = knobs[k]
 					"patience": lvl.patience_mult = knobs[k]
 					"ghost": lvl.ghost_interval_mult = knobs[k]
+					"messx": lvl.mess_mult *= knobs[k]
+					"healthx": lvl.health_mult *= knobs[k]
+					"decayx": lvl.decay_mult *= knobs[k]
+					"patiencex": lvl.patience_mult *= knobs[k]
+					"vips":
+						if knobs[k] <= 0.0:
+							lvl.vips.clear()
+					"groups":
+						if knobs[k] <= 0.0:
+							lvl.group_ratio = 0.0
+					"fatigue":
+						if knobs[k] <= 0.0:
+							lvl.staff_fatigue = false
+					"port":
+						if knobs[k] <= 0.0:
+							lvl.port_stop = {}
+					"storm":
+						if knobs[k] <= 0.0:
+							for i in range(lvl.scheduled_events.size() - 1, -1, -1):
+								if lvl.scheduled_events[i]["event"] == &"storm":
+									lvl.scheduled_events.remove_at(i)
 		var port := AutoBuilder.build(lvl)
 		var st: Dictionary = {}
 		for mode in modes:
@@ -89,17 +133,27 @@ func _init() -> void:
 				acc["brk"].append(float(m["breakdowns"]))
 				acc["sick"].append(float(m["sick"]))
 				acc["gh"].append(float(m["ghosts"]))
+				acc["vg"].append(float(m["vip_great"]))
+				acc["vo"].append(float(m["vip_ok"]))
+				acc["vb"].append(float(m["vip_bad"]))
+				acc["seas"].append(float(m["seasick"]))
 				if r["mutiny"]:
 					mut += 1
 				if int(r["stars"]) == 0:
 					zero_star += 1
+				for v in r.get("vips", []):
+					var key: String = "%s %s" % [mode, v["kind"]]
+					if not vk.has(key):
+						vk[key] = [0, 0, 0]
+					vk[key][[&"great", &"ok", &"bad"].find(StringName(v["grade"]))] += 1
 				var g: Array = r["goals"]
-				rows.append("%s,%s,%d,%.2f,%d,%d,%d,%d,%d,%d,%d,%.2f,%d,%.2f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.1f" % [
+				rows.append("%s,%s,%d,%.2f,%d,%d,%d,%d,%d,%d,%d,%.2f,%d,%.2f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%d,%d,%d,%d,%d,%d" % [
 					lvl.id, mode, s, r["rating"], r["stars"],
 					1 if g.size() > 0 and g[0]["met"] else 0, 1 if g.size() > 1 and g[1]["met"] else 0, 1 if g.size() > 2 and g[2]["met"] else 0,
 					r["profit"], r["guests_lost"], r["served"], r["avg_queue"], r["peak_queue"], r["avg_problems"], r["peak_problems"],
 					m["messes"], m["mess_spread"], m["cleaned"], m["breakdowns"], m["repairs"], m["sick"], m["ghosts"],
-					m["banished"], m["patience_outs"], m["slips"], 1 if r["mutiny"] else 0, r["time"]])
+					m["banished"], m["patience_outs"], m["slips"], 1 if r["mutiny"] else 0, r["time"],
+					m["vip_great"], m["vip_ok"], m["vip_bad"], m["seasick"], m["rests"], m["naps"]])
 			var mean: Dictionary = {}
 			for k in KEYS:
 				mean[k] = _mean(acc[k])
@@ -117,7 +171,12 @@ func _init() -> void:
 			l1 += " %5.1f %3.1f* (<%d:%d%s) |" % [d["rate"], d["stars"], int(d["min_stars"]), int(d["zero"]), "M%d" % int(d["mut"]) if int(d["mut"]) > 0 else ""]
 			l2 += " q %4.1f/%-3d pr %3.1f/%-3d |" % [d["avgq"], int(d["peakq"]), d["prob"], int(d["peakp"])]
 		var h: Dictionary = st[modes[modes.size() - 1]]
-		l2 += " msg %3.0f brk %3.0f sick %2.0f gh %2.0f" % [h["msg"], h["brk"], h["sick"], h["gh"]]
+		l2 += " msg %3.0f brk %3.0f sick %2.0f gh %2.0f seas %2.0f" % [h["msg"], h["brk"], h["sick"], h["gh"], h["seas"]]
+		if lvl.vips.size() > 0:
+			l2 += " | VIP g/o/b (per voyage):"
+			for mode in modes:
+				var dv: Dictionary = st[mode]
+				l2 += " %s %.1f/%.1f/%.1f" % [String(mode).substr(0, 1), dv["vg"], dv["vo"], dv["vb"]]
 		lines_a.append(l1)
 		lines_b.append(l2)
 		print(l1)
@@ -125,6 +184,10 @@ func _init() -> void:
 	print("queue avg/peak (summed over rooms) and open problems avg/peak; spawn counts per voyage for the last mode")
 	for l in lines_b:
 		print(l)
+	if not vk.is_empty():
+		var keys2: Array = vk.keys()
+		keys2.sort()
+		print("VIP verdicts great/ok/bad over all runs: " + ", ".join(keys2.map(func(k: String) -> String: return "%s %d/%d/%d" % [k, vk[k][0], vk[k][1], vk[k][2]])))
 	if lvls > 0:
 		var summary: String = "mean rating:"
 		for mode in modes:

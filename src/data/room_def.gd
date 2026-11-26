@@ -30,6 +30,8 @@ extends Resource
 @export var description: String = ""
 ## Extra (not in SPEC table): chance a finished use makes the guest sick (buffet/restaurant).
 @export var sick_chance: float = 0.0
+## Appeal multiplier for grown-ups choosing this room (the kids' club is built for kids: 0.2). 1.0 = no effect.
+@export var adult_mult: float = 1.0
 
 
 func is_transport() -> bool:

@@ -8,25 +8,25 @@ id = &"med_5"
 index = 5
 campaign_index = 5
 display_name = "Captain's Table"
-blurb = "Fine dining for fussy folk. The captain wants a full house."
+blurb = "Fine dining, a chef and an inspector on deck. Dock at Santorini for a quick refit."
 hull = &"medium"
 budget = 4400
 ticket_price = 26
 duration = 220.0
 waves = Array[Dictionary]([{
-"count": 7,
+"count": 6,
 "t": 0.0
 }, {
-"count": 6,
+"count": 5,
 "t": 31.0
 }, {
-"count": 5,
+"count": 4,
 "t": 66.0
 }, {
-"count": 5,
+"count": 4,
 "t": 101.0
 }, {
-"count": 2,
+"count": 3,
 "t": 136.5
 }])
 archetype_weights = {
@@ -37,24 +37,34 @@ archetype_weights = {
 }
 scheduled_events = Array[Dictionary]([{
 "event": &"lunch_rush",
-"t": 55.0
+"t": 45.0
 }, {
 "event": &"captains_dinner",
-"t": 95.0
+"t": 65.0
 }, {
 "event": &"power_surge",
-"t": 150.0
+"t": 160.0
 }])
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 40
+"value": 62
 }, {
 "type": "served",
-"value": 130
+"value": 110
 }, {
 "type": "rating",
-"value": 77
+"value": 86
 }])
-mess_mult = 1.19
-health_mult = 0.84
-decay_mult = 1.12
+mess_mult = 1.02
+health_mult = 0.96
+decay_mult = 1.05
+vips = Array[Dictionary]([{
+"kind": &"inspector",
+"t": 40.0
+}])
+port_stop = {
+"board": 6,
+"disembark": 0.3,
+"name": "Santorini",
+"t": 125.0
+}

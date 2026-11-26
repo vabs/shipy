@@ -4,7 +4,7 @@ extends Resource
 
 @export var id: StringName = &""
 @export var display_name: String = ""
-## sun_hat | headband | glasses_3d | headphones
+## sun_hat | headband | glasses_3d | headphones | propeller
 @export var prop: StringName = &"sun_hat"
 @export var body_color: Color = Color.WHITE
 @export var favorite_tags: Array[StringName] = []
@@ -17,6 +17,9 @@ extends Resource
 ## (gamer quirk). 1.0 = no quirk.
 @export var off_tag_fun_decay_mult: float = 1.0
 @export var quirk_text: String = ""
+## Kids only board inside families (docs/SPEC.md §13.6) and are drawn smaller.
+@export var kid: bool = false
+@export var body_scale: float = 1.0
 
 
 func likes(room: RoomDef) -> bool:

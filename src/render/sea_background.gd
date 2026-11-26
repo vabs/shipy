@@ -13,6 +13,10 @@ extends Node2D
 ##   var foreground: Node2D                 # set by make_foreground()/attach_to()
 ##   var horizon_gap: float                 # (0.14) horizon sits waterline - gap*screen_h above when bound to a camera
 ##   get_horizon_y() / get_waterline_y()    # current effective screen values
+##   set_weather(storm: float)              # 0..1 (SimWorld.weather_intensity): gloomy sky, dark clouds, rain, lightning, taller waves
+##   set_dock(progress: float, stop_name)   # 0..1 port stop (PortStop.dock_progress): harbour town + pier slide in; pass 0 to clear
+##   set_dock_anchor(local: Vector2)        # ship-local point where the pier meets the gangway ramp (the pier top, not the gangway)
+##   signal lightning(strength: float)      # a bolt just struck: audio plays thunder
 ## The front wave's crest sits ~6 px above the waterline (+-8 px wave) so it overlaps the hull bottom.
 
 const U := preload("res://src/render/art/art_util.gd")
@@ -24,6 +28,9 @@ const SS: float = 1.55   # scenery scale
 const FAR_SPEED: float = 3.0
 const CLOUD_SPEED: float = 7.0
 const WAVE_SPEED: Array[float] = [14.0, 26.0, 44.0, 70.0]
+
+## A bolt struck (strength 0..1): the level screen plays thunder (a beat later: the sound arrives after the light).
+signal lightning(strength: float)
 
 var foreground: Node2D = null
 var dest: StringName = &"med"
@@ -38,6 +45,20 @@ var _anim: float = 0.0   # real time (twinkles / pulses)
 var _size: Vector2 = Vector2(1920, 1080)
 var _cam: Camera2D = null
 var _cam_local_y: float = 40.0
+# storm / port stop state
+var _storm: float = 0.0
+var _dock: float = 0.0
+var _dock_name: String = ""
+var _dock_anchor: Vector2 = Vector2(-84.0, 0.0)
+## Dev: keep one lightning bolt frozen on screen (screenshots).
+var dev_hold_bolt: bool = false
+var _bolt_cd: float = 3.0
+var _bolt_n: int = 0
+var _flash: float = 0.0
+var _flash2_t: float = -1.0
+var _bolt_a: float = 0.0
+var _bolt_pts: PackedVector2Array = PackedVector2Array()
+var _bolt_branch: PackedVector2Array = PackedVector2Array()
 
 # wave buffers
 var _wn: int = 0
@@ -104,6 +125,7 @@ class SeaForeground extends Node2D:
 func set_destination(id: StringName) -> void:
 	dest = id if (id == &"arctic" or id == &"underworld") else &"med"
 	_pal = Palette.dest(dest)
+	set_weather(_storm)
 	_rebuild()
 	queue_redraw()
 
@@ -118,6 +140,27 @@ func set_waterline_y(y: float) -> void:
 
 func set_motion_scale(s: float) -> void:
 	_motion = maxf(0.0, s)
+
+
+func set_weather(storm: float) -> void:
+	_storm = clampf(storm, 0.0, 1.0)
+	modulate = SeaWeather.tint(dest, _storm)
+	if foreground != null and is_instance_valid(foreground):
+		foreground.modulate = modulate
+
+
+func get_weather() -> float:
+	return _storm
+
+
+func set_dock(progress: float, stop_name: String = "") -> void:
+	_dock = clampf(progress, 0.0, 1.0)
+	if stop_name != "":
+		_dock_name = stop_name
+
+
+func set_dock_anchor(local: Vector2) -> void:
+	_dock_anchor = local
 
 
 func get_horizon_y() -> float:
@@ -172,6 +215,7 @@ func _ready() -> void:
 func _process(dt: float) -> void:
 	_anim += dt
 	_mt += dt * _motion
+	_tick_lightning(dt)
 	_size = get_viewport_rect().size
 	if _cam != null and is_instance_valid(_cam) and _cam.is_inside_tree():
 		var sc: Vector2 = _cam.global_position + _cam.offset
@@ -182,6 +226,41 @@ func _process(dt: float) -> void:
 	queue_redraw()
 	if foreground != null and is_instance_valid(foreground):
 		foreground.queue_redraw()
+
+
+## Lightning: a bolt every few seconds while the storm is strong (more often at full strength), a short double flash, then fade.
+func _tick_lightning(dt: float) -> void:
+	if dev_hold_bolt and _storm > 0.55:
+		# dev (--boltshot): freeze a bolt on screen for screenshots
+		if _bolt_pts.is_empty():
+			var br0: Array = []
+			_bolt_pts = SeaWeather.make_bolt(_size.x * 0.62, 0.0, maxf(get_horizon_y() - 8.0, 120.0), 9, br0)
+			_bolt_branch = br0[0] if not br0.is_empty() else PackedVector2Array()
+		_bolt_a = 1.0
+		_flash = 0.3
+		return
+	_flash = maxf(_flash - dt * 3.2, 0.0)
+	_bolt_a = maxf(_bolt_a - dt * 2.4, 0.0)
+	if _flash2_t >= 0.0:
+		_flash2_t -= dt
+		if _flash2_t < 0.0:
+			_flash = maxf(_flash, 0.55)
+			_flash2_t = -1.0
+	if _storm < 0.55:
+		_bolt_cd = maxf(_bolt_cd, 1.5)
+		return
+	_bolt_cd -= dt
+	if _bolt_cd <= 0.0:
+		_bolt_n += 1
+		_bolt_cd = 2.6 + 4.4 * U.hash01(_bolt_n * 5 + 1)
+		_flash = 1.0
+		_flash2_t = 0.13
+		_bolt_a = 1.0
+		var x: float = _size.x * (0.1 + 0.8 * U.hash01(_bolt_n * 11 + 3))
+		var br: Array = []
+		_bolt_pts = SeaWeather.make_bolt(x, 0.0, maxf(get_horizon_y() - 8.0, 120.0), _bolt_n * 17 + 5, br)
+		_bolt_branch = br[0] if not br.is_empty() else PackedVector2Array()
+		lightning.emit(clampf(_storm, 0.0, 1.0))
 
 
 func _c(key: String) -> Color:
@@ -494,24 +573,50 @@ func _draw() -> void:
 	if dest == &"arctic":
 		_draw_aurora(hy, w)
 	_draw_clouds(hy, w)
+	SeaWeather.draw_sky(self, w, hy, _storm, dest, _anim, _mt)
+	SeaWeather.draw_bolt(self, _bolt_pts, _bolt_branch, _bolt_a * clampf(_storm * 2.0, 0.0, 1.0), dest)
 	_draw_ridges(hy, w)
 	_draw_objects(hy, w)
+	var dock_e: float = smoothstep(0.0, 1.0, _dock)
+	if dock_e > 0.001:
+		SeaDock.draw_town(self, dest, _pal, (1.0 - dock_e) * (w + 500.0), hy, w, _anim)
 	_draw_sea_base(hy, w, h)
 	# far wave layer
 	_wave(self, 0, hy + maxf(d * 0.1, 6.0), 3.0, 150.0, 0.7, h, d * 0.3)
 	_draw_floaters(hy, d)
 	_wave(self, 1, hy + d * 0.44, 5.0, 240.0, 2.1, h, d * 0.36)
 	_wave(self, 2, hy + d * 0.8, 7.0, 340.0, 4.0, h, d * 0.2 + 30.0)
-	_draw_reflection(hy, wy, w)
-	_draw_sparkles(hy, w, h)
+	if _storm < 0.5:
+		_draw_reflection(hy, wy, w)
+		_draw_sparkles(hy, w, h)
+	if dock_e > 0.001:
+		_draw_pier(dock_e, wy, w)
+	SeaWeather.draw_rain(self, w, h, _storm, dest, _anim, false)
+	SeaWeather.draw_splashes(self, w, wy + 4.0, h, _storm, _anim, dest)
 	match String(dest):
 		"med":
-			_draw_gulls(hy, w)
+			if _storm < 0.3:
+				_draw_gulls(hy, w)
 		"arctic":
 			_draw_snow(self, _parts_back, w, h, 0.8)
 		"underworld":
 			_draw_wisps(hy, d, w)
 			_draw_embers(self, _parts_back, w, h, 0.8)
+
+
+## The pier alongside the gangway, slid in from the left with `e` (0..1).
+func _draw_pier(e: float, wy: float, w: float) -> void:
+	var sc := Vector2.ZERO
+	var z: float = 1.0
+	if _cam != null and is_instance_valid(_cam):
+		sc = _cam.global_position + _cam.offset
+		z = _cam.zoom.y
+	var ex: float = (_dock_anchor.x - sc.x) * z + _size.x * 0.5
+	var ty: float = (_dock_anchor.y - sc.y) * z + _size.y * 0.5
+	var slide: float = (1.0 - e) * (ex + 80.0 * z)   # (the deck is far longer than the screen: only its ship-side edge has to travel in)
+	var g: Dictionary = {"ex": ex - slide, "ty": ty, "z": z, "wy": wy, "w": w, "name": _dock_name}
+	var rope_to: Vector2 = Vector2((_dock_anchor.x + 54.0 - sc.x) * z + _size.x * 0.5, (_dock_anchor.y - 22.0 - sc.y) * z + _size.y * 0.5)
+	SeaDock.draw_pier(self, dest, _pal, g, _anim, rope_to)
 
 
 func _ensure_buffers() -> void:
@@ -844,7 +949,8 @@ func _draw_sea_base(hy: float, w: float, h: float) -> void:
 
 
 ## One wave layer: filled strip from a sine crest down to bottom_y, a foam crest line and little "~" ticks.
-func _wave(ci: CanvasItem, li: int, base: float, amp: float, wl: float, seed_v: float, bottom_y: float, band: float = 40.0) -> void:
+func _wave(ci: CanvasItem, li: int, base: float, amp_in: float, wl: float, seed_v: float, bottom_y: float, band: float = 40.0) -> void:
+	var amp: float = amp_in * (1.0 + _storm * (0.7 if li == 0 else 1.5))   # storm swell
 	var n: int = _wn
 	var k: float = TAU / wl
 	var shift: float = _mt * WAVE_SPEED[li]
@@ -1035,3 +1141,5 @@ func _draw_front(ci: CanvasItem) -> void:
 		_draw_snow(ci, _parts_front, w, h, 0.9)
 	elif dest == &"underworld":
 		_draw_embers(ci, _parts_front, w, h, 1.0)
+	SeaWeather.draw_rain(ci, w, h, _storm, dest, _anim, true)
+	SeaWeather.draw_flash(ci, w, h, _flash * clampf(_storm * 2.0, 0.0, 1.0), dest)

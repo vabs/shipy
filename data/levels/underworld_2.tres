@@ -8,7 +8,7 @@ id = &"underworld_2"
 index = 2
 campaign_index = 14
 display_name = "Ferryman's Special"
-blurb = "The guests are dead hungry. The ghosts are dead keen."
+blurb = "The guests are dead hungry. The ghosts are dead keen. A storm is brewing."
 destination = &"underworld"
 hull = &"medium"
 budget = 5400
@@ -41,21 +41,33 @@ scheduled_events = Array[Dictionary]([{
 "t": 55.0
 }, {
 "event": &"haunting",
-"t": 115.0
+"t": 100.0
+}, {
+"event": &"storm",
+"t": 130.0
 }, {
 "event": &"power_surge",
-"t": 175.0
+"t": 190.0
 }])
 star_goals = Array[Dictionary]([{
 "type": "rating",
-"value": 32
+"value": 43
 }, {
 "type": "served",
-"value": 220
+"value": 260
 }, {
 "type": "rating",
-"value": 74
+"value": 78
 }])
-mess_mult = 1.25
-health_mult = 0.8
-decay_mult = 1.2
+mess_mult = 0.77
+health_mult = 1.25
+decay_mult = 1.23
+staff_fatigue = true
+vips = Array[Dictionary]([{
+"kind": &"celebrity",
+"t": 45.0
+}, {
+"kind": &"inspector",
+"t": 105.0
+}])
+group_ratio = 0.35

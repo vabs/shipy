@@ -4,11 +4,13 @@ extends Control
 ## every frame without rebuilding Controls.
 ##
 ## model keys: title: String, icon: StringName (optional), tag: String (small caption right of the title),
-##   lines: Array[String], bars: Array[{icon, label, value 0..1, color}], hint: String, pinned: bool, accent: Color
+##   lines: Array[String], bars: Array[{icon, label, value 0..1, color}], hint: String, pinned: bool, accent: Color,
+##   review: {value 0..1, caption, detail, grade} (a VIP's review meter: gold-edged bar under the lines)
 
 const U := preload("res://src/render/art/art_util.gd")
 const PAD: float = 14.0
 const MIN_W: float = 230.0
+const REVIEW_H: float = 76.0
 
 var model: Dictionary = {}
 var _size_px: Vector2 = Vector2(MIN_W, 80)
@@ -68,6 +70,10 @@ func _measure() -> Vector2:
 		else:
 			w = maxf(w, fr.get_string_size(String(l), HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x + PAD * 2.0)
 			h += 23.0
+	var review: Dictionary = model.get("review", {})
+	if not review.is_empty():
+		h += REVIEW_H
+		w = maxf(w, fr.get_string_size(String(review.get("detail", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x + PAD * 2.0)
 	var bars: Array = model.get("bars", [])
 	if not bars.is_empty():
 		h += 6.0 + 25.0 * float(bars.size())
@@ -112,6 +118,10 @@ func _draw() -> void:
 		else:
 			U.text(self, String(l), Vector2(PAD, y + 12.0), 18, UITheme.TEXT_MUTED.darkened(0.15), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fr)
 			y += 23.0
+	var review: Dictionary = model.get("review", {})
+	if not review.is_empty():
+		_draw_review(review, y + 4.0, r.size.x, fr, f)
+		y += REVIEW_H
 	var bars: Array = model.get("bars", [])
 	if not bars.is_empty():
 		y += 6.0
@@ -132,6 +142,28 @@ func _draw() -> void:
 	if hint != "":
 		y += 4.0
 		U.text(self, hint, Vector2(PAD, y + 14.0), 16, Palette.CORAL_DARK if not model.get("pinned", false) else UITheme.TEXT_MUTED, HORIZONTAL_ALIGNMENT_LEFT, -1.0, fr)
+
+
+## A VIP's review meter: a gold-edged plate with the standing, a caption ("1/2 meals") and a one-line summary.
+func _draw_review(rv: Dictionary, y: float, width: float, fr: Font, fb: Font) -> void:
+	var plate := Rect2(PAD, y, width - PAD * 2.0, REVIEW_H - 8.0)
+	U.rr(self, plate, 12.0, Color("FFF3CC"))
+	U.rr_outline(self, plate, 12.0, Palette.VIP_GOLD_DARK, 2.0)
+	IconArt.draw_icon(self, &"vip", Vector2(plate.position.x + 18.0, plate.position.y + 19.0), 24.0, _t, false)
+	U.text(self, "REVIEW", Vector2(plate.position.x + 36.0, plate.position.y + 24.0), 15, Palette.VIP_GOLD_DARK.darkened(0.3), HORIZONTAL_ALIGNMENT_LEFT, -1.0, fb)
+	var cap: String = String(rv.get("caption", ""))
+	var cw: float = fr.get_string_size(cap, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+	U.text(self, cap, Vector2(plate.end.x - 10.0 - cw, plate.position.y + 24.0), 16, UITheme.TEXT_INK, HORIZONTAL_ALIGNMENT_LEFT, -1.0, fr)
+	var track := Rect2(plate.position.x + 10.0, plate.position.y + 33.0, plate.size.x - 20.0, 10.0)
+	U.rr(self, track, 4.5, Color(0.17, 0.23, 0.36, 0.16))
+	var v: float = clampf(float(rv.get("value", 0.0)), 0.0, 1.0)
+	var col: Color = Palette.MINT if v >= 0.7 else (Palette.SUN if v >= 0.4 else Palette.CORAL)
+	if v > 0.01:
+		U.rr(self, Rect2(track.position, Vector2(maxf(track.size.y, track.size.x * v), track.size.y)), 4.5, col)
+		U.rr(self, Rect2(track.position + Vector2(3, 1.2), Vector2(maxf(track.size.x * v - 6.0, 2.0), 2.2)), 1.1, Color(1, 1, 1, 0.4))
+	var detail: String = String(rv.get("detail", ""))
+	if detail != "":
+		U.text(self, detail, Vector2(plate.position.x + 10.0, plate.position.y + 59.0), 14, UITheme.TEXT_MUTED, HORIZONTAL_ALIGNMENT_LEFT, -1.0, fr)
 
 
 func _right_text(s: String, p: Vector2, f: Font) -> void:

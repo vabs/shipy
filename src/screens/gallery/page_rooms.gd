@@ -4,8 +4,8 @@ extends Node2D
 
 const U := preload("res://src/render/art/art_util.gd")
 const ROOMS: Array[StringName] = [
-	&"cabin", &"buffet", &"toilets", &"bar", &"pool", &"deck_chairs", &"cinema", &"gym", &"arcade",
-	&"restaurant", &"medbay", &"sauna", &"ice_rink", &"casino", &"generator", &"water_tank", &"stairs", &"elevator",
+	&"cabin", &"buffet", &"toilets", &"bar", &"pool", &"deck_chairs", &"cinema", &"gym", &"arcade", &"kids_club",
+	&"restaurant", &"medbay", &"sauna", &"ice_rink", &"casino", &"crew_quarters", &"generator", &"water_tank", &"stairs", &"elevator",
 ]
 var _t: float = 0.0
 var _dest: StringName = &"med"
@@ -71,10 +71,15 @@ func _draw() -> void:
 			var pose := RoomArt.slot_pose(id)
 			for s in range(n):
 				var feet := RoomArt.slot_position(id, rect, s, cap)
-				GuestArt.draw_guest(self, feet, {
+				var go := {
 					"prop": PROPS[s % 4], "body_color": Palette.archetype_color([&"holidaymaker", &"fitness_fan", &"film_buff", &"gamer"][s % 4]),
 					"facing": RoomArt.slot_facing(id, rect, s, cap), "pose": pose, "t": _t, "walk_phase": _t * 8.0 + s,
-				})
+				}
+				if id == &"kids_club" and s % 3 != 2:
+					go["prop"] = &"propeller"
+					go["body_color"] = Palette.archetype_color(&"kid")
+					go["body_scale"] = 0.75
+				GuestArt.draw_guest(self, feet, go)
 		RoomArt.draw_room_front(self, id, rect, tier, st)
 		U.end_scaled(self)
 		U.text(self, String(id), Vector2(x, y + h * _scale + 16.0), 15, Palette.INK)

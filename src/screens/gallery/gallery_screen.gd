@@ -1,5 +1,5 @@
 extends Control
-## Dev gallery (docs/SPEC.md §10). `--scene=gallery --page=<rooms|guests|icons|ship|ui|sea> --dest=<med|arctic|underworld>`
+## Dev gallery (docs/SPEC.md §10). `--scene=gallery --page=<rooms|guests|icons|ship|ui|sea|crew|vips> --dest=<med|arctic|underworld>`
 ## Each page lives in page_<name>.gd (a Control/Node2D with optional setup(dest: StringName) and
 ## optional setup_params(params: Dictionary) for extra --key=value flags).
 

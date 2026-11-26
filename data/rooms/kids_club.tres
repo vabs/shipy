@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="RoomDef" format=3]
+
+[ext_resource type="Script" path="res://src/data/room_def.gd" id="1_5cp3w"]
+
+[resource]
+script = ExtResource("1_5cp3w")
+id = &"kids_club"
+display_name = "Kids' Club"
+category = &"fun"
+width = 3
+capacity = 6
+service_time = 9.0
+satisfies = {
+&"fun": 90.0
+}
+fun_tag = &"kids"
+spend = 4
+cost = 320
+upkeep = 5.0
+power = 2
+water = 1
+mess_chance = 0.2
+breakdown_time = 100.0
+wear_per_use = 5.0
+unlock_level = 6
+tier_bonus = Array[Dictionary]([{
+"capacity_add": 3,
+"cost": 192,
+"speed_mult": 1.0
+}, {
+"capacity_add": 3,
+"cost": 288,
+"speed_mult": 1.25
+}])
+colors = {
+"accent": Color(1, 0.56078434, 0.69411767, 1),
+"wall": Color(1, 0.8901961, 0.9372549, 1)
+}
+description = "Ball pit, slide and crayons. Built for kids."
+adult_mult = 0.2

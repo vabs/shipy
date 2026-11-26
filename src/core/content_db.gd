@@ -60,6 +60,10 @@ func all_staff_roles() -> Array[StaffDef]:
 	return ContentStore.all_staff_roles()
 
 
+func staff_available(campaign_index: int, destination_id: StringName) -> Array[StaffDef]:
+	return ContentStore.staff_available(campaign_index, destination_id)
+
+
 func all_events() -> Array[EventDef]:
 	return ContentStore.all_events()
 
